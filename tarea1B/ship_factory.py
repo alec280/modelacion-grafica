@@ -1,7 +1,8 @@
 """
 Alexander Cuevas, CC3501, 2019-2
 ship factory that builds spaceships,
-it works for both sides (o_o).
+and provides ammunition, it works 
+for both sides (o_o).
 """
 
 import glfw
@@ -184,7 +185,7 @@ def createWoz(advanced = False):
     # Variable used to change the colors
     # I preferred to use this over a different shader program
     # because I also need to use a different logic for the
-    # advanced ships
+    # advanced ships and they had a slighty different model
     channel =  1- int(advanced)
 
     gpuVariantTriangle = es.toGPUShape(createColorTriangle(channel, 0.6, 0))
@@ -248,3 +249,19 @@ def createWoz(advanced = False):
         woz.childs += [extraCannon0, extraCannon1]
 
     return woz
+
+
+# Creates a green bullet
+# If "player", creates a yellow bullet instead
+def createBullet(player = True):
+
+    gpuVariantCube = es.toGPUShape(bs.createColorCube(int(player), 1, 0))
+
+    littleBullet = sg.SceneGraphNode("littleBullet")
+    littleBullet.transform = tr.matmul([tr.rotationZ(math.pi / 4), tr.uniformScale(0.05)])
+    littleBullet.childs += [gpuVariantCube]
+
+    bullet = sg.SceneGraphNode("bullet")
+    bullet.childs += [littleBullet]
+
+    return bullet

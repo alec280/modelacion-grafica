@@ -26,13 +26,15 @@ class Controller:
     fillPolygon = True
     fleet = 0
     enemies = []
+    bullets = []
     
     # Player data
     hp = 3
     score = 0
     xPos = 0.0
     yPos = 0.0
-    readyToShot = False
+    time = 0
+    lastShotTime = 0.0
 
 
 # A class to store the data of an enemy
@@ -43,7 +45,21 @@ class Enemy:
 
     xPos = 0.0
     yPos = 0.0
-    readyToShot = False
+    xSpeed = 1
+    ySpeed = -1
+    time = 0.0
+    lastShotTime = 0
+
+
+# A class to store the data of a bullet
+class Bullet:
+    def __init__(self, shape, xPos, yPos, direction):
+        self.shape = shape
+        self.xPos = xPos
+        self.yPos = yPos
+        self.direction = direction
+    
+    time = 0.0
 
 
 # Global controller that communicates with the callback function
@@ -74,8 +90,14 @@ def on_key(window, key, scancode, action, mods):
         controller.fillPolygon = not controller.fillPolygon
 
     elif key == glfw.KEY_SPACE:
-        print('Disparo!')
-        controller.readyToShot = True
+
+        time = glfw.get_time()
+
+        if controller.lastShotTime == round(time, 1):
+            print("Recargando...")
+        else:
+            controller.lastShotTime = round(time, 1)
+            createBullet(controller.xPos, -0.65)
 
     elif key == glfw.KEY_ESCAPE:
         sys.exit()
@@ -124,12 +146,13 @@ def createEnemy(advanced = False):
     enemyShip = sg.SceneGraphNode(name)
     enemyShip.childs += [traslatedShip]
 
+    sign = random.randrange(-1, 2, 2)
     enemy = Enemy(name, enemyShip)
+    enemy.xSpeed = sign
+    enemy.ySpeed += random.randrange(-1, 2, 1) / 10.0
 
     # Puts the enemy in an empty area
     xSpawn = 0.0
-    sign = random.randrange(-1, 2, 2)
-
     for friend in controller.enemies:
         xPos = friend.xPos
 
@@ -141,20 +164,110 @@ def createEnemy(advanced = False):
     return enemy
 
 
+def createBullet(xPos, yPos, player = True):
+
+    global controller
+
+    bulletShape = sf.createBullet(player)
+    direction = 1 if player else -1
+
+    bullet = Bullet(bulletShape, xPos, yPos, direction)
+
+    controller.bullets.append(bullet)
+
+
+def drawBullets(pipeline, time):
+
+    forDeletion = []
+    
+    for bullet in controller.bullets:
+
+        shape = bullet.shape
+
+        if round(time, 2) != bullet.time:
+            bullet.time = round(time, 2)
+            bullet.yPos += 0.01 * bullet.direction
+
+        if 1.0 > bullet.yPos > -1.0:
+            shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
+            sg.drawSceneGraphNode(shape, pipeline, "transform")
+        else:
+            forDeletion.append(bullet)
+    
+    for bullet in forDeletion:
+        controller.bullets.remove(bullet)
+
+
 # Draws the enemies on screen and animates its flames
 def drawEnemies(pipeline, time):
 
     global controller
 
-    for enemy in controller.enemies:
+    length = len(controller.enemies)
 
+    for i in range(length):
+        
+        random.seed()
+
+        enemy = controller.enemies[i]
         ship = enemy.ship
+       
+        if round(time, 2) != enemy.time:
 
+            enemy.time = round(time, 2)
+            yPos = enemy.yPos
+            xPos = enemy.xPos
+            
+            if yPos >= 0.0:
+                enemy.ySpeed = -abs(enemy.ySpeed)
+            elif yPos <= -0.3:
+                enemy.ySpeed = abs(enemy.ySpeed)
+            yPos += 0.005 * enemy.ySpeed
+            
+            if xPos >= 0.8:
+                enemy.xSpeed = -1
+            elif xPos <= -0.8:
+                enemy.xSpeed = 1
+
+            crash = False
+            for j in range(length):
+                if j == i:
+                    continue
+                fxPos = controller.enemies[j].xPos
+                if fxPos + 0.1 >= xPos + 0.1 * enemy.xSpeed >= fxPos - 0.1:
+                    enemy.xSpeed = -enemy.xSpeed
+                    crash = True
+                    break
+            
+            if not crash:
+                xPos += 0.005 * enemy.xSpeed
+
+            enemy.yPos = yPos
+            enemy.xPos = xPos
+        
         ship.transform = tr.translate(enemy.xPos, enemy.yPos, 0)
         sg.drawSceneGraphNode(ship, pipeline, "transform")
     
         animatedFlame = sg.findNode(ship, "animatedFlame")
-        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(1.2 * time), 0)
+        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(12 * time), 0)
+
+
+# Decides if the enemies are gonna shot and creates
+# their bullets
+def angryEnemies(time):
+
+    for enemy in controller.enemies:
+
+        if enemy.lastShotTime == int(time):
+            continue
+    
+        enemy.lastShotTime = int(time)
+        createBullet(enemy.xPos, 0.65 + enemy.yPos, False)
+
+        # Advanced enemies shot more bullets
+        if enemy.name.startswith("advanced"):
+            createBullet(enemy.xPos + 0.05, 0.7 + enemy.yPos, False)
+            createBullet(enemy.xPos- 0.05, 0.7 + enemy.yPos, False)
 
 
 # Creates "n" enemies, each 5 enemies are advanced
@@ -211,10 +324,11 @@ if __name__ == "__main__":
     glClearColor(0.0, 0.0, 0.0, 1.0)
 
     # Creating shapes on GPU memory
-    createEnemies(4)
+    createEnemies(2)
     player = createPlayer()
 
     while not glfw.window_should_close(window):
+        
         # Using GLFW to check for input events
         glfw.poll_events()
 
@@ -227,22 +341,25 @@ if __name__ == "__main__":
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT)
 
-        time = 10 * glfw.get_time()
-
-        flameNode = sg.findNode(player, "animatedFlame")
-        flameNode.transform = tr.translate(0, 0.2 * np.sin(1.2 * time), 0)
+        time = glfw.get_time()
 
         # Creating and drawing the enemies
-        if int(time) % 5 == 0:
-            createEnemies(1)
+        if int(time) % 5 == 0 and int(time) != controller.time:
+            controller.time = int(time)
+            createEnemies(1 + int(controller.score >= 15))
         drawEnemies(pipeline, time)
 
-        # Drawing the Player
+        angryEnemies(time)
+
+        # Drawing the bullets
+        drawBullets(pipeline, time)
+
+        # Drawing the player
         player.transform = tr.translate(controller.xPos, 0, 0)
         sg.drawSceneGraphNode(player, pipeline, "transform")
 
         animatedFlame = sg.findNode(player, "animatedFlame")
-        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(1.2 * time), 0)
+        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(12 * time), 0)
 
         # Once the render is done, buffers are swapped, showing only the complete scene.
         glfw.swap_buffers(window)
