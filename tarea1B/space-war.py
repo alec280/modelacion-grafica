@@ -27,6 +27,7 @@ class Controller:
     fleet = 0
     enemies = []
     bullets = []
+    explosions = []
     
     # Player data
     hp = 3
@@ -62,6 +63,15 @@ class Bullet:
     time = 0.0
 
 
+# A class to store the data of an explosion
+class Explosion:
+    def __init__(self, shape, xPos, yPos, spawnTime):
+        self.shape = shape
+        self.xPos = xPos
+        self.yPos = yPos
+        self.spawnTime = spawnTime
+
+
 # Global controller that communicates with the callback function
 controller = Controller()
 
@@ -74,13 +84,13 @@ def on_key(window, key, scancode, action, mods):
         controller.xPos = max(-0.8, controller.xPos - 0.05)
 
     elif key == glfw.KEY_S:
-        controller.yPos = max(-1.0, controller.yPos - 0.1)
+        controller.yPos = max(-1.0, controller.yPos - 0.05)
 
     elif key == glfw.KEY_D:
         controller.xPos = min(0.8, controller.xPos + 0.05)
 
     elif key == glfw.KEY_W:
-        controller.yPos = min(1.0, controller.yPos + 0.1)
+        controller.yPos = min(1.0, controller.yPos + 0.05)
 
     elif action != glfw.PRESS:
         return
@@ -154,14 +164,22 @@ def createEnemy(advanced = False):
     # Puts the enemy in an empty area
     xSpawn = 0.0
     for friend in controller.enemies:
-        xPos = friend.xPos
-
-        if xPos + 0.1 >= xSpawn >= xPos - 0.1:
+        if abs(friend.xPos - xSpawn) <= 0.1:
             xSpawn += 0.2 * sign
     
     enemy.xPos = xSpawn
 
     return enemy
+
+
+def createExplosion(xPos, yPos, spawnTime):
+
+    global controller
+
+    explosionShape = sf.createExplosion()
+    explosion = Explosion(explosionShape, xPos, yPos, spawnTime)
+
+    controller.explosions.append(explosion)
 
 
 def createBullet(xPos, yPos, player = True):
@@ -178,25 +196,78 @@ def createBullet(xPos, yPos, player = True):
 
 def drawBullets(pipeline, time):
 
+    global controller
+
     forDeletion = []
     
     for bullet in controller.bullets:
 
         shape = bullet.shape
+        direction = bullet.direction
 
         if round(time, 2) != bullet.time:
             bullet.time = round(time, 2)
-            bullet.yPos += 0.01 * bullet.direction
+            bullet.yPos += 0.01 * direction
 
-        if 1.0 > bullet.yPos > -1.0:
-            shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
-            sg.drawSceneGraphNode(shape, pipeline, "transform")
-        else:
+        if not 1.0 > bullet.yPos > -1.0:
             forDeletion.append(bullet)
-    
-    for bullet in forDeletion:
-        controller.bullets.remove(bullet)
+            continue
 
+        if direction < 0:
+    
+            if abs(controller.xPos - bullet.xPos) <= 0.12:
+                if abs(-0.8 - bullet.yPos) <= 0.1:
+
+                    controller.hp -= 1
+                    forDeletion.append(bullet)
+                    print("Daño recibido!")
+                    continue
+        else:
+
+            for enemy in controller.enemies:
+                if abs(enemy.xPos - bullet.xPos) <= 0.08:
+                    if abs(0.8 + enemy.yPos - bullet.yPos) <= 0.1:
+
+                        controller.score += 1
+                        forDeletion.append(enemy)
+                        forDeletion.append(bullet)
+                        createExplosion(enemy.xPos, 0.8 + enemy.yPos, time)
+                        break
+
+        shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
+        sg.drawSceneGraphNode(shape, pipeline, "transform")
+    
+    for entity in forDeletion:
+        # IMPORTANT: SOMETIMES THIS CAUSES A CRASH
+        # TODO: FIX IT
+        if type(entity) == Bullet:
+            controller.bullets.remove(entity)
+        else:
+            controller.enemies.remove(entity)
+
+
+def drawExplosions(pipeline, time):
+
+    global controller
+
+    forDeletion = []
+
+    for explosion in controller.explosions:
+
+        shape = explosion.shape
+        spawnTime = explosion.spawnTime
+
+        position = tr.translate(explosion.xPos, explosion.yPos, 0)
+        scale = spawnTime + 1 - time
+
+        shape.transform = tr.matmul([position, tr.uniformScale(scale * 0.2)])
+        sg.drawSceneGraphNode(shape, pipeline, "transform")
+
+        if time > spawnTime + 1:
+            forDeletion.append(explosion)
+
+    for explosion in forDeletion:
+        controller.explosions.remove(explosion)
 
 # Draws the enemies on screen and animates its flames
 def drawEnemies(pipeline, time):
@@ -234,7 +305,7 @@ def drawEnemies(pipeline, time):
                 if j == i:
                     continue
                 fxPos = controller.enemies[j].xPos
-                if fxPos + 0.1 >= xPos + 0.1 * enemy.xSpeed >= fxPos - 0.1:
+                if abs(xPos + 0.1 * enemy.xSpeed - fxPos) <= 0.1:
                     enemy.xSpeed = -enemy.xSpeed
                     crash = True
                     break
@@ -326,6 +397,7 @@ if __name__ == "__main__":
     # Creating shapes on GPU memory
     createEnemies(2)
     player = createPlayer()
+    background = sf.createBackground()
 
     while not glfw.window_should_close(window):
         
@@ -343,12 +415,34 @@ if __name__ == "__main__":
 
         time = glfw.get_time()
 
-        # Creating and drawing the enemies
-        if int(time) % 5 == 0 and int(time) != controller.time:
-            controller.time = int(time)
-            createEnemies(1 + int(controller.score >= 15))
-        drawEnemies(pipeline, time)
+        # Drawing the background, its 3 layers move at different rates
+        # in order to simulate 3D
+        background.transform = tr.translate(0, -controller.yPos, 0)
 
+        farLayer = sg.findNode(background, "farLayer")
+        farLayer.transform = tr.translate(0, controller.yPos * 0.5, 0)
+
+        mediumLayer = sg.findNode(background, "mediumLayer")
+        mediumLayer.transform = tr.translate(0, controller.yPos * 0.25, 0)
+
+        sg.drawSceneGraphNode(background, pipeline, "transform")
+
+        # Drawing the explosions of defeated ships
+        drawExplosions(pipeline, time)
+
+        # Creating and drawing the enemies
+        # Tries to create more enemies every 3 seconds
+        if int(time) % 3 == 0 and int(time) != controller.time:
+            
+            controller.time = int(time)
+
+            # Adds more enemies to keep the game challenging
+            extraEnemies = int(controller.score >= 15)
+            extraEnemies += int(len(controller.enemies) == 1)
+
+            createEnemies(1 + extraEnemies)
+
+        drawEnemies(pipeline, time)
         angryEnemies(time)
 
         # Drawing the bullets
