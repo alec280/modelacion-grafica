@@ -13,6 +13,7 @@ import scene_graph as sg
 import easy_shaders as es
 
 # Local imports (created by me)
+import visual_effects as ve
 import ship_factory as sf
 
 
@@ -49,7 +50,7 @@ class Enemy:
     xSpeed = 1
     ySpeed = -1
     time = 0.0
-    lastShotTime = 0
+    lastShotTime = 0.0
 
 
 # A class to store the data of a bullet
@@ -72,7 +73,7 @@ class Explosion:
         self.spawnTime = spawnTime
 
 
-# Global controller that communicates with the callback function
+# Global controller thatd communicates with the callback function
 controller = Controller()
 
 
@@ -81,13 +82,13 @@ def on_key(window, key, scancode, action, mods):
     global controller
 
     if key == glfw.KEY_A:
-        controller.xPos = max(-0.8, controller.xPos - 0.05)
+        controller.xPos = max(-0.85, controller.xPos - 0.05)
 
     elif key == glfw.KEY_S:
         controller.yPos = max(-1.0, controller.yPos - 0.05)
 
     elif key == glfw.KEY_D:
-        controller.xPos = min(0.8, controller.xPos + 0.05)
+        controller.xPos = min(0.85, controller.xPos + 0.05)
 
     elif key == glfw.KEY_W:
         controller.yPos = min(1.0, controller.yPos + 0.05)
@@ -103,10 +104,10 @@ def on_key(window, key, scancode, action, mods):
 
         time = glfw.get_time()
 
-        if controller.lastShotTime == round(time, 1):
+        if controller.lastShotTime + 0.2 > time:
             print("Recargando...")
         else:
-            controller.lastShotTime = round(time, 1)
+            controller.lastShotTime = time
             createBullet(controller.xPos, -0.65)
 
     elif key == glfw.KEY_ESCAPE:
@@ -172,12 +173,18 @@ def createEnemy(advanced = False):
     return enemy
 
 
+# Creates an explosion, called when an enemy dies
 def createExplosion(xPos, yPos, spawnTime):
 
     global controller
 
-    explosionShape = sf.createExplosion()
+    explosionShape = ve.createExplosion()
     explosion = Explosion(explosionShape, xPos, yPos, spawnTime)
+
+    # Reflects the score in the title
+    if controller.score > 0:
+        text = f"SPACE WAR (Score: {controller.score})"
+        glfw.set_window_title(window, text)
 
     controller.explosions.append(explosion)
 
@@ -217,7 +224,8 @@ def drawBullets(pipeline, time):
     
             if abs(controller.xPos - bullet.xPos) <= 0.12:
                 if abs(-0.8 - bullet.yPos) <= 0.1:
-
+                    
+                    # TODO: Add visual feedback and inmunity frames
                     controller.hp -= 1
                     forDeletion.append(bullet)
                     print("Daño recibido!")
@@ -229,21 +237,16 @@ def drawBullets(pipeline, time):
                     if abs(0.8 + enemy.yPos - bullet.yPos) <= 0.1:
 
                         controller.score += 1
-                        forDeletion.append(enemy)
                         forDeletion.append(bullet)
                         createExplosion(enemy.xPos, 0.8 + enemy.yPos, time)
+                        controller.enemies.remove(enemy)
                         break
 
         shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
         sg.drawSceneGraphNode(shape, pipeline, "transform")
     
-    for entity in forDeletion:
-        # IMPORTANT: SOMETIMES THIS CAUSES A CRASH
-        # TODO: FIX IT
-        if type(entity) == Bullet:
-            controller.bullets.remove(entity)
-        else:
-            controller.enemies.remove(entity)
+    for bullet in forDeletion:
+        controller.bullets.remove(bullet)
 
 
 def drawExplosions(pipeline, time):
@@ -289,15 +292,15 @@ def drawEnemies(pipeline, time):
             yPos = enemy.yPos
             xPos = enemy.xPos
             
-            if yPos >= 0.0:
+            if yPos >= 0.05:
                 enemy.ySpeed = -abs(enemy.ySpeed)
-            elif yPos <= -0.3:
+            elif yPos <= -0.25:
                 enemy.ySpeed = abs(enemy.ySpeed)
             yPos += 0.005 * enemy.ySpeed
             
-            if xPos >= 0.8:
+            if xPos >= 0.9:
                 enemy.xSpeed = -1
-            elif xPos <= -0.8:
+            elif xPos <= -0.9:
                 enemy.xSpeed = 1
 
             crash = False
@@ -329,10 +332,14 @@ def angryEnemies(time):
 
     for enemy in controller.enemies:
 
-        if enemy.lastShotTime == int(time):
+        # Reduces the delay between bullets if the score
+        # is high enough
+        waitingTime = 1.0 - 0.25 * min(2, controller.score // 25)
+
+        if enemy.lastShotTime + waitingTime > time:
             continue
     
-        enemy.lastShotTime = int(time)
+        enemy.lastShotTime = time
         createBullet(enemy.xPos, 0.65 + enemy.yPos, False)
 
         # Advanced enemies shot more bullets
@@ -341,7 +348,8 @@ def angryEnemies(time):
             createBullet(enemy.xPos- 0.05, 0.7 + enemy.yPos, False)
 
 
-# Creates "n" enemies, each 5 enemies are advanced
+# Creates "n" enemies, some enemies are stronger than
+# others
 def createEnemies(n):
 
     global controller
@@ -350,12 +358,19 @@ def createEnemies(n):
         return
 
     for _ in range(n):
-        # Creates a new enemy with a unique name
+
+        # Increases the fleet counter, which also increases
+        # the difficulty of the game
         controller.fleet += 1
         i = controller.fleet
         enemies = controller.enemies
 
-        enemy = createEnemy(i % 5 == 0)
+        # Creates a stronger enemy to keep the game challenging
+        # if the fleet is high enough
+        advanced = i % max(1, 5 - controller.fleet // 15) == 0
+
+        # Creates a new enemy with a unique name
+        enemy = createEnemy(advanced)
         enemy.name += str(i - 1)
         enemies.append(enemy)
 
@@ -363,6 +378,27 @@ def createEnemies(n):
         if len(enemies) == 4 or i == N:
             break
 
+
+# Draws a lifebar that reflects the player's health
+def drawLifeBar(pipeline, hp):
+
+    bar0 = ve.createLifeBar(hp > 0)
+    bar0.transform = tr.translate(-0.92, -0.95, 0)
+
+    bar1 = ve.createLifeBar(hp > 1)
+    bar1.transform = tr.translate(-0.81, -0.95, 0)
+
+    bar2 = ve.createLifeBar(hp > 2)
+    bar2.transform = tr.translate(-0.70, -0.95, 0)
+
+    sg.drawSceneGraphNode(bar0, pipeline, "transform")
+    sg.drawSceneGraphNode(bar1, pipeline, "transform")
+    sg.drawSceneGraphNode(bar2, pipeline, "transform")
+
+
+# TODO: Create 2 main functions, an intro (while the
+# game loads some stuff) and the game proper, that
+# could begin after pressing a key in the intro
 
 # Main function
 if __name__ == "__main__":
@@ -397,10 +433,14 @@ if __name__ == "__main__":
     # Creating shapes on GPU memory
     createEnemies(2)
     player = createPlayer()
-    background = sf.createBackground()
+    background = ve.createBackground()
 
     while not glfw.window_should_close(window):
         
+        # TODO: ADD ANIMATION
+        if controller.hp <= 0:
+            break
+
         # Using GLFW to check for input events
         glfw.poll_events()
 
@@ -436,9 +476,9 @@ if __name__ == "__main__":
             
             controller.time = int(time)
 
-            # Adds more enemies to keep the game challenging
-            extraEnemies = int(controller.score >= 15)
-            extraEnemies += int(len(controller.enemies) == 1)
+            # Tries to add more enemies to keep the game challenging
+            extraEnemies = int(len(controller.enemies) < 2)
+            extraEnemies += max(2, controller.score // 15)
 
             createEnemies(1 + extraEnemies)
 
@@ -454,6 +494,9 @@ if __name__ == "__main__":
 
         animatedFlame = sg.findNode(player, "animatedFlame")
         animatedFlame.transform = tr.translate(0, 0.2 * np.sin(12 * time), 0)
+
+        # Drawing the lifebar of the player, with the corresponding colors
+        drawLifeBar(pipeline, controller.hp)
 
         # Once the render is done, buffers are swapped, showing only the complete scene.
         glfw.swap_buffers(window)
