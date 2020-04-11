@@ -5,6 +5,8 @@ the gameplay, like explosions, the
 background and a basic HUD.
 """
 
+from PIL import Image
+from OpenGL.GL import GL_CLAMP_TO_EDGE, GL_LINEAR
 import glfw
 import math
 import numpy as np
@@ -93,23 +95,23 @@ def createExplosion():
 # Animated in the main script through the controller
 def createBackground():
     
-    gpuFarCube = es.toGPUShape(bs.createColorCube(0.1, 0.1, 0.1))
-    gpuMediumCube = es.toGPUShape(bs.createColorCube(0.2, 0.2, 0.2))
-    gpuCloseCube = es.toGPUShape(bs.createColorCube(0.3, 0.3, 0.3))
+    gpuFarQuad = es.toGPUShape(bs.createColorQuad(0.1, 0.1, 0.1))
+    gpuMediumQuad = es.toGPUShape(bs.createColorQuad(0.2, 0.2, 0.2))
+    gpuCloseQuad = es.toGPUShape(bs.createColorQuad(0.3, 0.3, 0.3))
 
     # Creating the shape of the stars
-    farCube = sg.SceneGraphNode("farCube")
-    farCube.transform = tr.matmul([tr.rotationZ(math.pi / 4), tr.uniformScale(0.04)])
-    farCube.transform = tr.matmul([tr.scale(0.8, 1, 0), farCube.transform])
-    farCube.childs += [gpuFarCube]
+    farQuad = sg.SceneGraphNode("farQuad")
+    farQuad.transform = tr.matmul([tr.rotationZ(math.pi / 4), tr.uniformScale(0.04)])
+    farQuad.transform = tr.matmul([tr.scale(0.8, 1, 0), farQuad.transform])
+    farQuad.childs += [gpuFarQuad]
 
-    mediumCube = sg.SceneGraphNode("mediumCube")
-    mediumCube.transform = farCube.transform
-    mediumCube.childs += [gpuMediumCube]
+    mediumQuad = sg.SceneGraphNode("mediumQuad")
+    mediumQuad.transform = farQuad.transform
+    mediumQuad.childs += [gpuMediumQuad]
 
-    closeCube = sg.SceneGraphNode("closeCube")
-    closeCube.transform = farCube.transform
-    closeCube.childs += [gpuCloseCube]
+    closeQuad = sg.SceneGraphNode("closeQuad")
+    closeQuad.transform = farQuad.transform
+    closeQuad.childs += [gpuCloseQuad]
 
     farLayer = sg.SceneGraphNode("farLayer")
     mediumLayer = sg.SceneGraphNode("mediumLayer")
@@ -119,23 +121,23 @@ def createBackground():
     sequence = np.random.randint(-9, 10, (3, 12, 2))
 
     for dup in sequence[0]:
-        farStar = sg.SceneGraphNode("farCube")
+        farStar = sg.SceneGraphNode("farQuad")
         farStar.transform = tr.translate(dup[0] / 10.0, dup[1] / 10.0, 0)
-        farStar.childs += [farCube]
+        farStar.childs += [farQuad]
 
         farLayer.childs += [farStar]
     
     for dup in sequence[1]:
-        mediumStar = sg.SceneGraphNode("mediumCube")
+        mediumStar = sg.SceneGraphNode("mediumQuad")
         mediumStar.transform = tr.translate(dup[0] / 10.0, dup[1] / 10.0, 0)
-        mediumStar.childs += [mediumCube]
+        mediumStar.childs += [mediumQuad]
 
         mediumLayer.childs += [mediumStar]
     
     for dup in sequence[2]:
-        closeStar = sg.SceneGraphNode("closeCube")
+        closeStar = sg.SceneGraphNode("closeQuad")
         closeStar.transform = tr.translate(dup[0] / 10.0, dup[1] / 10.0, 0)
-        closeStar.childs += [closeCube]
+        closeStar.childs += [closeQuad]
 
         closeLayer.childs += [closeStar]
     
@@ -186,3 +188,16 @@ def createLifeBar(green = True):
 
     return bar
 
+
+# Creates a texture with the text "GAME OVER"
+# or "VICTORY" that covers all the screen
+def createGameOver(victory = False):
+
+    image = "victory_texture.png" if victory else "game_over_texture.png"
+    textureShape = es.toGPUShape(bs.createTextureQuad(image), GL_CLAMP_TO_EDGE, GL_LINEAR)
+
+    texture = sg.SceneGraphNode("texture")
+    texture.transform = tr.uniformScale(2)
+    texture.childs += [textureShape]
+
+    return texture

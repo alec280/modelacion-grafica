@@ -22,17 +22,17 @@ import visual_effects as ve
 # Creates a simple cannon, used by all spaceships
 def createCannon():
 
-    gpuGrayCube = es.toGPUShape(bs.createColorCube(0.8, 0.8, 0.8))
-    gpuDarkCube = es.toGPUShape(bs.createColorCube(0.3, 0.3, 0.3))
+    gpuGrayQuad = es.toGPUShape(bs.createColorQuad(0.8, 0.8, 0.8))
+    gpuDarkQuad = es.toGPUShape(bs.createColorQuad(0.3, 0.3, 0.3))
 
     # A cannon is made of a tunnel section and a head
     tunnel = sg.SceneGraphNode("tunnel")
     tunnel.transform = tr.scale(0.1, 0.4, 1)
-    tunnel.childs += [gpuGrayCube]
+    tunnel.childs += [gpuGrayQuad]
 
     head = sg.SceneGraphNode("head")
     head.transform = tr.matmul([tr.translate(0, -0.2, 0), tr.uniformScale(0.15)])
-    head.childs += [gpuDarkCube]
+    head.childs += [gpuDarkQuad]
 
     cannon = sg.SceneGraphNode("simpleCannon")
     cannon.childs += [tunnel]
@@ -83,9 +83,9 @@ def createAvelyn():
     gpuGrayTrapeze = es.toGPUShape(ve.createColorTrapeze(0.6, 0.8, 0.6))
     gpuYellowTrapeze = es.toGPUShape(ve.createColorTrapeze(1, 1, 0))
 
-    gpuGrayCube0 = es.toGPUShape(bs.createColorCube(0.4, 0.6, 0.4))
-    gpuGrayCube1 = es.toGPUShape(bs.createColorCube(0.6, 0.8, 0.6))
-    gpuGrayCube2 = es.toGPUShape(bs.createColorCube(0.5, 0.7, 0.5))
+    gpuGrayQuad0 = es.toGPUShape(bs.createColorQuad(0.4, 0.6, 0.4))
+    gpuGrayQuad1 = es.toGPUShape(bs.createColorQuad(0.6, 0.8, 0.6))
+    gpuGrayQuad2 = es.toGPUShape(bs.createColorQuad(0.5, 0.7, 0.5))
 
     # Creating the cannon of the ship
     cannon = sg.SceneGraphNode("cannon")
@@ -115,20 +115,20 @@ def createAvelyn():
     # Creating extensions of the ship
     extension0 = sg.SceneGraphNode("extension0")
     extension0.transform = tr.matmul([tr.translate(0, 0.60, 0), tr.scale(1, 0.2, 1)])
-    extension0.childs += [gpuGrayCube0]
+    extension0.childs += [gpuGrayQuad0]
 
     extension1 = sg.SceneGraphNode("extension1")
     extension1.transform = tr.matmul([tr.translate(0, 0.75, 0), tr.scale(1, 0.2, 1)])
-    extension1.childs += [gpuGrayCube1]
+    extension1.childs += [gpuGrayQuad1]
 
     # Creating shapes to decorate the wings
     rectangle = sg.SceneGraphNode("rectangle")
     rectangle.transform = tr.scale(0.75, 1.5, 1)
-    rectangle.childs += [gpuGrayCube2]
+    rectangle.childs += [gpuGrayQuad2]
 
     decorated = sg.SceneGraphNode("decorated")
     decorated.transform = tr.matmul([tr.translate(0, 0.5, 0), tr.scale(0.8, 0.2, 1)])
-    decorated.childs += [gpuGrayCube0]
+    decorated.childs += [gpuGrayQuad0]
 
     # Creating the wings of the ship
     wing0 = sg.SceneGraphNode("wing0")
@@ -228,11 +228,11 @@ def createWoz(advanced = False):
 # If "player", creates a yellow bullet instead
 def createBullet(player = True):
 
-    gpuVariantCube = es.toGPUShape(bs.createColorCube(int(player), 1, 0))
+    gpuVariantQuad = es.toGPUShape(bs.createColorQuad(int(player), 1, 0))
 
     littleBullet = sg.SceneGraphNode("littleBullet")
     littleBullet.transform = tr.matmul([tr.rotationZ(math.pi / 4), tr.uniformScale(0.05)])
-    littleBullet.childs += [gpuVariantCube]
+    littleBullet.childs += [gpuVariantQuad]
 
     bullet = sg.SceneGraphNode("bullet")
     bullet.childs += [littleBullet]

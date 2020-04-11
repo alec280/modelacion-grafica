@@ -18,13 +18,12 @@ import ship_factory as sf
 
 
 # Input from command line
-N = sys.argv[1] if len(sys.argv) > 1 else "5"
-N = int(N) if N.isdigit() else 5
+N = sys.argv[1] if len(sys.argv) > 1 else "60"
+N = int(N) if N.isdigit() else 60
 
 
 # A class to store the application control
 class Controller:
-    fillPolygon = True
     fleet = 0
     enemies = []
     bullets = []
@@ -37,6 +36,7 @@ class Controller:
     yPos = 0.0
     time = 0
     lastShotTime = 0.0
+    impactTime = -1.0
 
 
 # A class to store the data of an enemy
@@ -81,7 +81,15 @@ def on_key(window, key, scancode, action, mods):
 
     global controller
 
-    if key == glfw.KEY_A:
+    # Closing the game is the only input 
+    # accepted once the game is over
+    if controller.hp <= 0 or controller.score >= N:
+        if action == glfw.PRESS and key == glfw.KEY_ESCAPE:
+            sys.exit()
+        else:
+            print('Tecla desconocida')
+
+    elif key == glfw.KEY_A:
         controller.xPos = max(-0.85, controller.xPos - 0.05)
 
     elif key == glfw.KEY_S:
@@ -96,10 +104,6 @@ def on_key(window, key, scancode, action, mods):
     elif action != glfw.PRESS:
         return
     
-    elif key == glfw.KEY_F:
-        print('Alternar relleno de figuras')
-        controller.fillPolygon = not controller.fillPolygon
-
     elif key == glfw.KEY_SPACE:
 
         time = glfw.get_time()
@@ -221,15 +225,16 @@ def drawBullets(pipeline, time):
             continue
 
         if direction < 0:
-    
-            if abs(controller.xPos - bullet.xPos) <= 0.12:
-                if abs(-0.8 - bullet.yPos) <= 0.1:
-                    
-                    # TODO: Add visual feedback and inmunity frames
-                    controller.hp -= 1
-                    forDeletion.append(bullet)
-                    print("Daño recibido!")
-                    continue
+            if controller.impactTime + 1.0 < time:
+                if abs(controller.xPos - bullet.xPos) <= 0.12:
+                    if abs(-0.8 - bullet.yPos) <= 0.1:
+                        
+                        controller.hp -= 1
+                        controller.impactTime = time
+
+                        forDeletion.append(bullet)
+                        print("Daño recibido!")
+                        continue
         else:
 
             for enemy in controller.enemies:
@@ -396,9 +401,8 @@ def drawLifeBar(pipeline, hp):
     sg.drawSceneGraphNode(bar2, pipeline, "transform")
 
 
-# TODO: Create 2 main functions, an intro (while the
-# game loads some stuff) and the game proper, that
-# could begin after pressing a key in the intro
+# TODO: Create an animation for the GAME OVER, for
+# now is just a still image
 
 # Main function
 if __name__ == "__main__":
@@ -421,8 +425,9 @@ if __name__ == "__main__":
     # Connecting the callback function 'on_key' to handle keyboard events
     glfw.set_key_callback(window, on_key)
 
-    # Assembling the shader program (pipeline) with both shaders
+    # Assembling the shader programs (pipeline) with both shaders
     pipeline = es.SimpleTransformShaderProgram()
+    texturePipeline = es.SimpleTextureTransformShaderProgram()
     
     # Telling OpenGL to use our shader program
     glUseProgram(pipeline.shaderProgram)
@@ -434,26 +439,43 @@ if __name__ == "__main__":
     createEnemies(2)
     player = createPlayer()
     background = ve.createBackground()
+    gameOver = ve.createGameOver()
+    victory = ve.createGameOver(True)
 
     while not glfw.window_should_close(window):
         
-        # TODO: ADD ANIMATION
-        if controller.hp <= 0:
-            break
+        time = glfw.get_time()
 
         # Using GLFW to check for input events
         glfw.poll_events()
 
-        # Filling or not the shapes depending on the controller state
-        if (controller.fillPolygon):
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
-        else:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT)
 
-        time = glfw.get_time()
+        # If the game is over, the loop is reduced to
+        # showing a victory or defeat texture
+        if controller.hp <= 0 or controller.score >= N: 
+
+            controller.bullets.clear()
+            controller.enemies.clear()
+            controller.explosions.clear()
+
+            glUseProgram(texturePipeline.shaderProgram)
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+
+            image = victory if controller.score >= N else gameOver
+
+            sg.drawSceneGraphNode(image, texturePipeline, "transform")
+
+            glfw.swap_buffers(window)
+            continue
+        
+        # Filling or not the shapes depending on the controller state
+        # it shows lines to indicate invulnerability frames
+        if controller.impactTime + 1.0 > time:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        else:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
         # Drawing the background, its 3 layers move at different rates
         # in order to simulate 3D
@@ -478,7 +500,7 @@ if __name__ == "__main__":
 
             # Tries to add more enemies to keep the game challenging
             extraEnemies = int(len(controller.enemies) < 2)
-            extraEnemies += max(2, controller.score // 15)
+            extraEnemies += int(controller.score > 15)
 
             createEnemies(1 + extraEnemies)
 
