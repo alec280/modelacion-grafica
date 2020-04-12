@@ -2,7 +2,7 @@
 Alexander Cuevas, CC3501, 2020-1
 Creates visuals that don't affect
 the gameplay, like explosions, the
-background and a basic HUD.
+background, text, and a basic HUD.
 """
 
 from PIL import Image
@@ -118,7 +118,7 @@ def createBackground():
     closeLayer = sg.SceneGraphNode("closeLayer")
 
     # Adding the stars at random
-    sequence = np.random.randint(-9, 10, (3, 12, 2))
+    sequence = np.random.randint(-9, 10, (3, 4, 2))
 
     for dup in sequence[0]:
         farStar = sg.SceneGraphNode("farQuad")
@@ -196,8 +196,11 @@ def createGameOver(victory = False):
     image = "victory_texture.png" if victory else "game_over_texture.png"
     textureShape = es.toGPUShape(bs.createTextureQuad(image), GL_CLAMP_TO_EDGE, GL_LINEAR)
 
+    scaledTexture = sg.SceneGraphNode("scaledTexture")
+    scaledTexture.transform = tr.uniformScale(2)
+    scaledTexture.childs += [textureShape]
+
     texture = sg.SceneGraphNode("texture")
-    texture.transform = tr.uniformScale(2)
-    texture.childs += [textureShape]
+    texture.childs += [scaledTexture]
 
     return texture

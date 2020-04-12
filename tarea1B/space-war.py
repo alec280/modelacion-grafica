@@ -22,21 +22,10 @@ N = sys.argv[1] if len(sys.argv) > 1 else "60"
 N = int(N) if N.isdigit() else 60
 
 
-# A class to store the application control
+# A class to store variables affected by the user's input
 class Controller:
-    fleet = 0
-    enemies = []
-    bullets = []
-    explosions = []
-    
-    # Player data
-    hp = 3
-    score = 0
     xPos = 0.0
     yPos = 0.0
-    time = 0
-    lastShotTime = 0.0
-    impactTime = -1.0
 
 
 # A class to store the data of an enemy
@@ -54,36 +43,68 @@ class Enemy:
 
 
 # A class to store the data of a bullet
+# Bullets are always an element of a global list
 class Bullet:
-    def __init__(self, shape, xPos, yPos, direction):
-        self.shape = shape
+
+    global logic
+
+    def __init__(self, yellow, xPos, yPos):
+        self.shape = sf.createBullet(yellow)
+        self.direction = 1 if yellow else -1
         self.xPos = xPos
         self.yPos = yPos
-        self.direction = direction
-    
-    time = 0.0
+        self.time = 0.0
+
+        logic.bullets.append(self)
 
 
 # A class to store the data of an explosion
+# Explosions are always an element of a global list
 class Explosion:
-    def __init__(self, shape, xPos, yPos, spawnTime):
-        self.shape = shape
+
+    global logic
+
+    def __init__(self, xPos, yPos, spawnTime):
+        self.shape = ve.createExplosion()
         self.xPos = xPos
         self.yPos = yPos
         self.spawnTime = spawnTime
 
+        logic.explosions.append(self)
 
-# Global controller thatd communicates with the callback function
+
+# A class to store global variables
+class Logic:
+    score = 0
+    fleet = 0
+
+    # Properties of the player's ship
+    hp = 3
+    lastShotTime = 0.0
+    impactTime = -1.0
+    globalTime = 0
+
+    # List of objects
+    enemies = []
+    bullets = []
+    explosions = []
+
+# Global controller that communicates with the callback function
 controller = Controller()
 
+# Global variable that stores the data of the game
+logic = Logic()
 
+
+# Handles the input of the user
 def on_key(window, key, scancode, action, mods):
 
     global controller
+    global logic
 
     # Closing the game is the only input 
     # accepted once the game is over
-    if controller.hp <= 0 or controller.score >= N:
+    if logic.hp <= 0 or logic.score >= N:
         if action == glfw.PRESS and key == glfw.KEY_ESCAPE:
             sys.exit()
         else:
@@ -108,11 +129,11 @@ def on_key(window, key, scancode, action, mods):
 
         time = glfw.get_time()
 
-        if controller.lastShotTime + 0.2 > time:
+        if logic.lastShotTime + 0.2 > time:
             print("Recargando...")
         else:
-            controller.lastShotTime = time
-            createBullet(controller.xPos, -0.65)
+            logic.lastShotTime = time
+            Bullet(True, controller.xPos, -0.65)
 
     elif key == glfw.KEY_ESCAPE:
         sys.exit()
@@ -143,7 +164,7 @@ def createPlayer():
 # If "advanced", creates a stronger enemy
 def createEnemy(advanced = False):
 
-    global controller
+    global logic
 
     random.seed()
 
@@ -168,7 +189,7 @@ def createEnemy(advanced = False):
 
     # Puts the enemy in an empty area
     xSpawn = 0.0
-    for friend in controller.enemies:
+    for friend in logic.enemies:
         if abs(friend.xPos - xSpawn) <= 0.1:
             xSpawn += 0.2 * sign
     
@@ -177,142 +198,119 @@ def createEnemy(advanced = False):
     return enemy
 
 
-# Creates an explosion, called when an enemy dies
-def createExplosion(xPos, yPos, spawnTime):
+# Updates the position of the bullets and determines
+# if a ship suffered damage
+def bulletLogic(time):
 
-    global controller
-
-    explosionShape = ve.createExplosion()
-    explosion = Explosion(explosionShape, xPos, yPos, spawnTime)
-
-    # Reflects the score in the title
-    if controller.score > 0:
-        text = f"SPACE WAR (Score: {controller.score})"
-        glfw.set_window_title(window, text)
-
-    controller.explosions.append(explosion)
-
-
-def createBullet(xPos, yPos, player = True):
-
-    global controller
-
-    bulletShape = sf.createBullet(player)
-    direction = 1 if player else -1
-
-    bullet = Bullet(bulletShape, xPos, yPos, direction)
-
-    controller.bullets.append(bullet)
-
-
-def drawBullets(pipeline, time):
-
+    global logic
     global controller
 
     forDeletion = []
     
-    for bullet in controller.bullets:
+    for bullet in logic.bullets:
 
-        shape = bullet.shape
         direction = bullet.direction
+        yPos = bullet.yPos
 
         if round(time, 2) != bullet.time:
             bullet.time = round(time, 2)
             bullet.yPos += 0.01 * direction
 
-        if not 1.0 > bullet.yPos > -1.0:
+        # Deleting bullets that won't be drawn
+        if not 1.0 > yPos > -1.0:
             forDeletion.append(bullet)
             continue
+        
+        # Nothing happens in the middle of the screen
+        if 0.5 > yPos > -0.7:
+            continue
 
+        # Using the bullet against the player
         if direction < 0:
-            if controller.impactTime + 1.0 < time:
-                if abs(controller.xPos - bullet.xPos) <= 0.12:
-                    if abs(-0.8 - bullet.yPos) <= 0.1:
+            if abs(controller.xPos - bullet.xPos) <= 0.12:
+                if abs(yPos + 0.8) <= 0.1:
                         
-                        controller.hp -= 1
-                        controller.impactTime = time
-
-                        forDeletion.append(bullet)
+                    # The player has invulnerability frames
+                    if logic.impactTime + 1.0 < time:
+                        logic.hp -= 1
+                        logic.impactTime = time
                         print("Daño recibido!")
-                        continue
-        else:
 
-            for enemy in controller.enemies:
-                if abs(enemy.xPos - bullet.xPos) <= 0.08:
-                    if abs(0.8 + enemy.yPos - bullet.yPos) <= 0.1:
+                    forDeletion.append(bullet)
+            continue
+        
+        # Using the bullet against one enemy
+        for enemy in logic.enemies:
+            if abs(enemy.xPos - bullet.xPos) <= 0.08:
+                if abs(0.8 + enemy.yPos - yPos) <= 0.1:
 
-                        controller.score += 1
-                        forDeletion.append(bullet)
-                        createExplosion(enemy.xPos, 0.8 + enemy.yPos, time)
-                        controller.enemies.remove(enemy)
-                        break
+                    forDeletion.append(bullet)
+                    Explosion(enemy.xPos, 0.8 + enemy.yPos, time)
+                    logic.enemies.remove(enemy)
 
-        shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
-        sg.drawSceneGraphNode(shape, pipeline, "transform")
-    
+                    # Updating the score
+                    logic.score += 1
+                    if logic.score > 0:
+                        text = f"SPACE WAR (Score: {logic.score})"
+                        glfw.set_window_title(window, text)
+
+                    break
+
     for bullet in forDeletion:
-        controller.bullets.remove(bullet)
+        logic.bullets.remove(bullet)
 
 
-def drawExplosions(pipeline, time):
+# The explosions eventually disappear
+def explosionLogic(time):
 
-    global controller
-
+    global logic
     forDeletion = []
 
-    for explosion in controller.explosions:
-
-        shape = explosion.shape
-        spawnTime = explosion.spawnTime
-
-        position = tr.translate(explosion.xPos, explosion.yPos, 0)
-        scale = spawnTime + 1 - time
-
-        shape.transform = tr.matmul([position, tr.uniformScale(scale * 0.2)])
-        sg.drawSceneGraphNode(shape, pipeline, "transform")
-
-        if time > spawnTime + 1:
+    for explosion in logic.explosions:
+        if time > explosion.spawnTime + 1:
             forDeletion.append(explosion)
 
     for explosion in forDeletion:
-        controller.explosions.remove(explosion)
+        logic.explosions.remove(explosion)
 
-# Draws the enemies on screen and animates its flames
-def drawEnemies(pipeline, time):
 
-    global controller
+# Moves the enemies and creates their bullets
+def enemyLogic(time):
 
-    length = len(controller.enemies)
+    global logic
+
+    length = len(logic.enemies)
 
     for i in range(length):
         
-        random.seed()
-
-        enemy = controller.enemies[i]
-        ship = enemy.ship
+        enemy = logic.enemies[i]
        
         if round(time, 2) != enemy.time:
 
             enemy.time = round(time, 2)
             yPos = enemy.yPos
             xPos = enemy.xPos
+
+            crash = False
             
+            # Updating the vertical position
             if yPos >= 0.05:
                 enemy.ySpeed = -abs(enemy.ySpeed)
             elif yPos <= -0.25:
                 enemy.ySpeed = abs(enemy.ySpeed)
             yPos += 0.005 * enemy.ySpeed
             
+            # Updating the horizontal position
             if xPos >= 0.9:
                 enemy.xSpeed = -1
             elif xPos <= -0.9:
                 enemy.xSpeed = 1
 
-            crash = False
+            # The enemies don't want to crash with each other
             for j in range(length):
                 if j == i:
                     continue
-                fxPos = controller.enemies[j].xPos
+                fxPos = logic.enemies[j].xPos
                 if abs(xPos + 0.1 * enemy.xSpeed - fxPos) <= 0.1:
                     enemy.xSpeed = -enemy.xSpeed
                     crash = True
@@ -324,55 +322,40 @@ def drawEnemies(pipeline, time):
             enemy.yPos = yPos
             enemy.xPos = xPos
         
-        ship.transform = tr.translate(enemy.xPos, enemy.yPos, 0)
-        sg.drawSceneGraphNode(ship, pipeline, "transform")
-    
-        animatedFlame = sg.findNode(ship, "animatedFlame")
-        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(12 * time), 0)
-
-
-# Decides if the enemies are gonna shot and creates
-# their bullets
-def angryEnemies(time):
-
-    for enemy in controller.enemies:
-
-        # Reduces the delay between bullets if the score
-        # is high enough
-        waitingTime = 1.0 - 0.25 * min(2, controller.score // 25)
+        # Deciding if the enemy is going to shot
+        waitingTime = 1.0 - 0.25 * min(2, logic.score // 25)
 
         if enemy.lastShotTime + waitingTime > time:
             continue
     
         enemy.lastShotTime = time
-        createBullet(enemy.xPos, 0.65 + enemy.yPos, False)
+        Bullet(False, enemy.xPos, 0.65 + enemy.yPos)
 
         # Advanced enemies shot more bullets
         if enemy.name.startswith("advanced"):
-            createBullet(enemy.xPos + 0.05, 0.7 + enemy.yPos, False)
-            createBullet(enemy.xPos- 0.05, 0.7 + enemy.yPos, False)
+            Bullet(False, enemy.xPos + 0.05, 0.7 + enemy.yPos)
+            Bullet(False, enemy.xPos - 0.05, 0.7 + enemy.yPos)
 
 
-# Creates "n" enemies, some enemies are stronger than
-# others
+# Creates "n" enemies, some enemies are stronger than others
 def createEnemies(n):
 
-    global controller
+    global logic
 
-    if controller.fleet == N or len(controller.enemies) == 4:
+    if logic.fleet == N or len(logic.enemies) == 4:
         return
 
     for _ in range(n):
 
         # Increases the fleet counter, which also increases
         # the difficulty of the game
-        controller.fleet += 1
-        i = controller.fleet
-        enemies = controller.enemies
+        logic.fleet += 1
+        i = logic.fleet
+        enemies = logic.enemies
 
         # Creates a stronger enemy to keep the game challenging
         # if the fleet is high enough
-        advanced = i % max(1, 5 - controller.fleet // 15) == 0
+        advanced = i % max(1, 5 - logic.fleet // 15) == 0
 
         # Creates a new enemy with a unique name
         enemy = createEnemy(advanced)
@@ -382,6 +365,14 @@ def createEnemies(n):
         # There can only be 4 enemies on screen
         if len(enemies) == 4 or i == N:
             break
+
+
+# Updates the game according to time and logic
+def gameFlow(time):
+    
+    explosionLogic(time)
+    enemyLogic(time)
+    bulletLogic(time)
 
 
 # Draws a lifebar that reflects the player's health
@@ -401,8 +392,73 @@ def drawLifeBar(pipeline, hp):
     sg.drawSceneGraphNode(bar2, pipeline, "transform")
 
 
-# TODO: Create an animation for the GAME OVER, for
-# now is just a still image
+# Draws the explosions of defeated ships
+def drawExplosions(time):
+
+    global logic
+
+    for explosion in logic.explosions:
+        shape = explosion.shape
+        spawnTime = explosion.spawnTime
+
+        position = tr.translate(explosion.xPos, explosion.yPos, 0)
+        scale = tr.uniformScale(0.2 * (spawnTime + 1 - time))
+
+        shape.transform = tr.matmul([position, scale])
+        sg.drawSceneGraphNode(shape, pipeline, "transform")
+
+
+# Draws everything on the screen
+def drawScreen(pipeline, time, background, player):
+
+    global controller
+    global logic
+
+    # Local position of the animated flames
+    flameLoop = 0.2 * np.sin(12 * time)
+    
+    # Drawing the background, its 3 layers move at
+    # different rates in order to simulate 3D
+    background.transform = tr.translate(0, controller.yPos * -1.0, 0)
+
+    farLayer = sg.findNode(background, "farLayer")
+    farLayer.transform = tr.translate(0, controller.yPos * 0.5, 0)
+
+    mediumLayer = sg.findNode(background, "mediumLayer")
+    mediumLayer.transform = tr.translate(0, controller.yPos * 0.25, 0)
+
+    sg.drawSceneGraphNode(background, pipeline, "transform")
+
+    # Drawing the explosions of defeated ships
+    drawExplosions(time)
+
+    # Drawing the enemies
+    for enemy in logic.enemies:
+        ship = enemy.ship
+        ship.transform = tr.translate(enemy.xPos, enemy.yPos, 0)
+
+        animatedFlame = sg.findNode(ship, "animatedFlame")
+        animatedFlame.transform = tr.translate(0, flameLoop, 0)
+
+        sg.drawSceneGraphNode(ship, pipeline, "transform")
+
+    # Drawing the bullets
+    for bullet in logic.bullets:
+        shape = bullet.shape
+        shape.transform = tr.translate(bullet.xPos, bullet.yPos, 0)
+        sg.drawSceneGraphNode(shape, pipeline, "transform")
+
+    # Drawing the player
+    player.transform = tr.translate(controller.xPos, 0, 0)
+
+    animatedFlame = sg.findNode(player, "animatedFlame")
+    animatedFlame.transform = tr.translate(0, flameLoop, 0)
+
+    sg.drawSceneGraphNode(player, pipeline, "transform")
+
+    # Drawing the lifebar of the player, with the corresponding colors
+    drawLifeBar(pipeline, logic.hp)
+
 
 # Main function
 if __name__ == "__main__":
@@ -454,71 +510,57 @@ if __name__ == "__main__":
 
         # If the game is over, the loop is reduced to
         # showing a victory or defeat texture
-        if controller.hp <= 0 or controller.score >= N: 
+        if logic.hp <= 0 or logic.score >= N: 
 
-            controller.bullets.clear()
-            controller.enemies.clear()
-            controller.explosions.clear()
+            logic.bullets.clear()
+            logic.enemies.clear()
 
             glUseProgram(texturePipeline.shaderProgram)
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-            image = victory if controller.score >= N else gameOver
+            image = victory if logic.score >= N else gameOver
 
+            image.transform = tr.uniformScale(1 + 0.1 * np.sin(5 * time))
             sg.drawSceneGraphNode(image, texturePipeline, "transform")
+
+            # If just defeated, draws a single explosion
+            if logic.hp == 0:
+                logic.explosions.clear()
+                Explosion(controller.xPos, -0.8, time)
+                logic.hp -= 1
+            
+            if len(logic.explosions) > 0:
+                glUseProgram(pipeline.shaderProgram)
+                explosionLogic(time)
+                drawExplosions(time)
 
             glfw.swap_buffers(window)
             continue
         
-        # Filling or not the shapes depending on the controller state
-        # it shows lines to indicate invulnerability frames
-        if controller.impactTime + 1.0 > time:
+        # Filling or not the shapes
+        # it only shows lines to indicate invulnerability frames
+        if logic.impactTime + 1.0 > time:
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         else:
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-        # Drawing the background, its 3 layers move at different rates
-        # in order to simulate 3D
-        background.transform = tr.translate(0, -controller.yPos, 0)
-
-        farLayer = sg.findNode(background, "farLayer")
-        farLayer.transform = tr.translate(0, controller.yPos * 0.5, 0)
-
-        mediumLayer = sg.findNode(background, "mediumLayer")
-        mediumLayer.transform = tr.translate(0, controller.yPos * 0.25, 0)
-
-        sg.drawSceneGraphNode(background, pipeline, "transform")
-
-        # Drawing the explosions of defeated ships
-        drawExplosions(pipeline, time)
-
         # Creating and drawing the enemies
         # Tries to create more enemies every 3 seconds
-        if int(time) % 3 == 0 and int(time) != controller.time:
+        if int(time) % 3 == 0 and int(time) != logic.globalTime:
             
-            controller.time = int(time)
+            logic.globalTime = int(time)
 
             # Tries to add more enemies to keep the game challenging
-            extraEnemies = int(len(controller.enemies) < 2)
-            extraEnemies += int(controller.score > 15)
+            extraEnemies = int(len(logic.enemies) < 2)
+            extraEnemies += int(logic.score > 15)
 
             createEnemies(1 + extraEnemies)
 
-        drawEnemies(pipeline, time)
-        angryEnemies(time)
+        # Updating the game state
+        gameFlow(time)
 
-        # Drawing the bullets
-        drawBullets(pipeline, time)
-
-        # Drawing the player
-        player.transform = tr.translate(controller.xPos, 0, 0)
-        sg.drawSceneGraphNode(player, pipeline, "transform")
-
-        animatedFlame = sg.findNode(player, "animatedFlame")
-        animatedFlame.transform = tr.translate(0, 0.2 * np.sin(12 * time), 0)
-
-        # Drawing the lifebar of the player, with the corresponding colors
-        drawLifeBar(pipeline, controller.hp)
+        # Drawing everything on screen
+        drawScreen(pipeline, time, background, player)
 
         # Once the render is done, buffers are swapped, showing only the complete scene.
         glfw.swap_buffers(window)
