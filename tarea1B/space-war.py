@@ -114,13 +114,13 @@ def on_key(window, key, scancode, action, mods):
         controller.xPos = max(-0.85, controller.xPos - 0.05)
 
     elif key == glfw.KEY_S:
-        controller.yPos = max(-1.0, controller.yPos - 0.05)
+        controller.yPos = max(-0.05, controller.yPos - 0.05)
 
     elif key == glfw.KEY_D:
         controller.xPos = min(0.85, controller.xPos + 0.05)
 
     elif key == glfw.KEY_W:
-        controller.yPos = min(1.0, controller.yPos + 0.05)
+        controller.yPos = min(0.25, controller.yPos + 0.05)
 
     elif action != glfw.PRESS:
         return
@@ -133,7 +133,7 @@ def on_key(window, key, scancode, action, mods):
             print("Recargando...")
         else:
             logic.lastShotTime = time
-            Bullet(True, controller.xPos, -0.65)
+            Bullet(True, controller.xPos, -0.65 + controller.yPos)
 
     elif key == glfw.KEY_ESCAPE:
         sys.exit()
@@ -222,13 +222,13 @@ def bulletLogic(time):
             continue
         
         # Nothing happens in the middle of the screen
-        if 0.5 > yPos > -0.7:
+        if 0.5 > yPos > -0.45:
             continue
 
         # Using the bullet against the player
         if direction < 0:
             if abs(controller.xPos - bullet.xPos) <= 0.12:
-                if abs(yPos + 0.8) <= 0.1:
+                if abs(yPos + 0.8 - controller.yPos) <= 0.1:
                         
                     # The player has invulnerability frames
                     if logic.impactTime + 1.0 < time:
@@ -417,16 +417,9 @@ def drawScreen(pipeline, time, background, player):
     # Local position of the animated flames
     flameLoop = 0.2 * np.sin(12 * time)
     
-    # Drawing the background, its 3 layers move at
-    # different rates in order to simulate 3D
-    background.transform = tr.translate(0, controller.yPos * -1.0, 0)
-
-    farLayer = sg.findNode(background, "farLayer")
-    farLayer.transform = tr.translate(0, controller.yPos * 0.5, 0)
-
-    mediumLayer = sg.findNode(background, "mediumLayer")
-    mediumLayer.transform = tr.translate(0, controller.yPos * 0.25, 0)
-
+    # Drawing the animated background.
+    backTime = time % 5
+    background.transform = tr.translate(0, -backTime * 0.4, 0)
     sg.drawSceneGraphNode(background, pipeline, "transform")
 
     # Drawing the explosions of defeated ships
@@ -449,7 +442,7 @@ def drawScreen(pipeline, time, background, player):
         sg.drawSceneGraphNode(shape, pipeline, "transform")
 
     # Drawing the player
-    player.transform = tr.translate(controller.xPos, 0, 0)
+    player.transform = tr.translate(controller.xPos, controller.yPos, 0)
 
     animatedFlame = sg.findNode(player, "animatedFlame")
     animatedFlame.transform = tr.translate(0, flameLoop, 0)
@@ -526,7 +519,7 @@ if __name__ == "__main__":
             # If just defeated, draws a single explosion
             if logic.hp == 0:
                 logic.explosions.clear()
-                Explosion(controller.xPos, -0.8, time)
+                Explosion(controller.xPos, -0.8 + controller.yPos, time)
                 logic.hp -= 1
             
             if len(logic.explosions) > 0:

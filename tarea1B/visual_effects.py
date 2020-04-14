@@ -92,7 +92,7 @@ def createExplosion():
 
 
 # Creates a background composed of 3 layers
-# Animated in the main script through the controller
+# Animated in the main script
 def createBackground():
     
     gpuFarQuad = es.toGPUShape(bs.createColorQuad(0.1, 0.1, 0.1))
@@ -143,7 +143,7 @@ def createBackground():
     
     # Joining the layers
     background = sg.SceneGraphNode("background")
-    background.transform = tr.translate(0, 1, 0)
+    background.transform = tr.translate(0, 0, 0)
     background.childs += [farLayer]
     background.childs += [mediumLayer]
     background.childs += [closeLayer]
@@ -151,7 +151,7 @@ def createBackground():
     # An extension of the background in order to allow
     # limited scrolling
     backgroundExtra = sg.SceneGraphNode("backgroundExtra")
-    backgroundExtra.transform = tr.translate(0, -2, 0)
+    backgroundExtra.transform = tr.translate(0, 2, 0)
     backgroundExtra.childs += [background]
 
     finalBackground = sg.SceneGraphNode("finalBackground")
