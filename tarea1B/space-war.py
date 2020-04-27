@@ -35,7 +35,7 @@ class Enemy:
         self.ship = ship
 
     xPos = 0.0
-    yPos = 0.0
+    yPos = 0.35
     xSpeed = 1
     ySpeed = -1
     time = 0.0
@@ -217,7 +217,11 @@ def bulletLogic(time):
             bullet.yPos += 0.01 * direction
 
         # Deleting bullets that won't be drawn
-        if not 1.0 > yPos > -1.0:
+        if direction < 0 and yPos < -1.0:
+            forDeletion.append(bullet)
+            continue
+            
+        elif direction > 0 and yPos > 1.2:
             forDeletion.append(bullet)
             continue
         
