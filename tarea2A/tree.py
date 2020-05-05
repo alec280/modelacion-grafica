@@ -31,9 +31,10 @@ extension = fullName[dotIdx:]
 class Controller:
     def __init__(self):
         self.fillPolygon = True
-        self.cameraZoom = 10
-        self.cameraPhi = 0
-        self.cameraTheta = 0
+        self.showAxis = True
+        self.cameraZoom = 3
+        self.cameraPhi = 45
+        self.cameraTheta = 45
 
 
 # Global controller that will communicate with the callback function
@@ -62,8 +63,11 @@ def on_key(window, key, scancode, action, mods):
     elif key == glfw.KEY_W:
         controller.cameraZoom = max(1.0, controller.cameraZoom - 0.1)
 
-    if action != glfw.PRESS:
+    elif action != glfw.PRESS:
         return
+    
+    elif key == glfw.KEY_LEFT_CONTROL:
+        controller.showAxis = not controller.showAxis
 
     elif key == glfw.KEY_SPACE:
         controller.fillPolygon = not controller.fillPolygon
@@ -89,8 +93,10 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
     indices = []
 
     # Creating vertices that will become the center of two polygons
-    vertices += [0, 0, halfLenght] + colorCoffee
-    vertices += [0, 0, -halfLenght] + colorCoffee
+    # The normals of all vertices were set up considering each branch as
+    # a component of a tree, so some simplifications were be made
+    vertices += [0, 0, halfLenght] + colorCoffee + [0, 0, 1]
+    vertices += [0, 0, -halfLenght] + colorCoffee + [0, 0, -1]
 
     # Creating a prism made up of two connected polygons
     for i in range(complexity):
@@ -100,8 +106,8 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
         x = radius * np.cos(sub_angle)
         y = radius * np.sin(sub_angle)
 
-        vertices += [x, y, halfLenght] + colorCoffee
-        vertices += [x, y, -halfLenght] + colorCoffee
+        vertices += [x, y, halfLenght] + colorCoffee + [x, y, 0]
+        vertices += [x, y, -halfLenght] + colorCoffee + [x, y, 0]
 
         if i > 0:
             j = (i + 1) * 2
@@ -129,7 +135,7 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
 
 
 # Moves the camera around a sphere looking at the center,
-# returns a view matrix
+# returns the view matrix and the viewPos vector for later use
 def moveCamera():
 
     # Angles of a spheric system, determined by the controller
@@ -152,7 +158,7 @@ def moveCamera():
     viewPos = np.array([camX, camY, camZ])
     viewUp = np.array([upX, upY, upZ])
 
-    return tr.lookAt(viewPos, np.array([0,0,0]), viewUp)
+    return tr.lookAt(viewPos, np.array([0,0,0]), viewUp), viewPos
 
 
 if __name__ == "__main__":
@@ -175,8 +181,9 @@ if __name__ == "__main__":
     # Connecting the callback function 'on_key' to handle keyboard events
     glfw.set_key_callback(window, on_key)
 
-    # This shader program does not consider lighting
+    # Shader programs, the first without lighting and the second with Phong lighting
     colorPipeline = es.SimpleModelViewProjectionShaderProgram()
+    lightingPipeline = ls.SimplePhongShaderProgram()
 
     glUseProgram(colorPipeline.shaderProgram)
 
@@ -188,18 +195,19 @@ if __name__ == "__main__":
     glEnable(GL_DEPTH_TEST)
 
     # Creating shapes on GPU memory
-    gpuPolygon = es.toGPUShape(createBranch(1.0, 0.1, 3))
-    gpuAxis = es.toGPUShape(bs.createAxis(4))
+    gpuBranch = es.toGPUShape(createBranch(1.0, 0.1, 6))
+    gpuAxis = es.toGPUShape(bs.createAxis())
+
+    # Setting up the projection
+    projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
 
     while not glfw.window_should_close(window):
 
         # Using GLFW to check for input events
         glfw.poll_events()
 
-        projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
-
         # Moving the camera
-        view = moveCamera()
+        view, viewPos = moveCamera()
 
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -209,13 +217,46 @@ if __name__ == "__main__":
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
         else:
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-    
-        glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "projection"), 1, GL_TRUE, projection)
-        glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "view"), 1, GL_TRUE, view)
-        glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
 
-        colorPipeline.drawShape(gpuPolygon)
-        colorPipeline.drawShape(gpuAxis, GL_LINES)
+        # The axis is drawn without lighting effects
+        if controller.showAxis:
+            glUseProgram(colorPipeline.shaderProgram)
+            glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "projection"), 1, GL_TRUE, projection)
+            glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "view"), 1, GL_TRUE, view)
+            glUniformMatrix4fv(glGetUniformLocation(colorPipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
+            colorPipeline.drawShape(gpuAxis, GL_LINES)
+        
+        # Using the lighting shader program
+        glUseProgram(lightingPipeline.shaderProgram)
+
+        # Setting all uniform shader variables
+        
+        # White light in all components: ambient, diffuse and specular.
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "La"), 1.0, 1.0, 1.0)
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "Ld"), 1.0, 1.0, 1.0)
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "Ls"), 1.0, 1.0, 1.0)
+
+        # Object is barely visible at only ambient and brighter for the diffuse component.
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "Ka"), 0.3, 0.3, 0.3)
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "Kd"), 0.5, 0.5, 0.5)
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "Ks"), 0.1, 0.1, 0.1)
+
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "lightPosition"), 5, 5, 5)
+        glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "viewPosition"), viewPos[0], viewPos[1], viewPos[2])
+
+        # In my humble opinion, natural wood isn't shiny at all
+        glUniform1ui(glGetUniformLocation(lightingPipeline.shaderProgram, "shininess"), 1)
+
+        glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "constantAttenuation"), 0.0001)
+        glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "linearAttenuation"), 0.03)
+        glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "quadraticAttenuation"), 0.01)
+
+        glUniformMatrix4fv(glGetUniformLocation(lightingPipeline.shaderProgram, "projection"), 1, GL_TRUE, projection)
+        glUniformMatrix4fv(glGetUniformLocation(lightingPipeline.shaderProgram, "view"), 1, GL_TRUE, view)
+        glUniformMatrix4fv(glGetUniformLocation(lightingPipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
+
+        # Drawing the shapes
+        lightingPipeline.drawShape(gpuBranch)
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
         glfw.swap_buffers(window)
