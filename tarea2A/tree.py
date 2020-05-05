@@ -78,14 +78,12 @@ def on_key(window, key, scancode, action, mods):
 
 # Creates a branch or tree trunk of variable length
 # Ratio: Size of the bases of the shape in proportion to the lenght
-# Complexity: How many sides are used to create the bases of the shape,
+# Sides: How many sides are used to create the bases of the shape,
 # must be greater than 2
-def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
+def createBranch(length = 1.0, ratio = 0.1, sides = 6):
 
-    halfLenght = length / 2
     radius = length * ratio
-
-    angle = 360 / complexity
+    angle = 360 / sides
 
     colorCoffee = [0.67, 0.33, 0.0]
 
@@ -95,19 +93,19 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
     # Creating vertices that will become the center of two polygons
     # The normals of all vertices were set up considering each branch as
     # a component of a tree, so some simplifications were be made
-    vertices += [0, 0, halfLenght] + colorCoffee + [0, 0, 1]
-    vertices += [0, 0, -halfLenght] + colorCoffee + [0, 0, -1]
+    vertices += [0, 0, length] + colorCoffee + [0, 0, 1]
+    vertices += [0, 0, 0] + colorCoffee + [0, 0, -1]
 
     # Creating a prism made up of two connected polygons
-    for i in range(complexity):
+    for i in range(sides):
 
         sub_angle = angle * i * np.pi / 180
 
         x = radius * np.cos(sub_angle)
         y = radius * np.sin(sub_angle)
 
-        vertices += [x, y, halfLenght] + colorCoffee + [x, y, 0]
-        vertices += [x, y, -halfLenght] + colorCoffee + [x, y, 0]
+        vertices += [x, y, length] + colorCoffee + [x, y, 0]
+        vertices += [x, y, 0] + colorCoffee + [x, y, 0]
 
         if i > 0:
             j = (i + 1) * 2
@@ -121,7 +119,7 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
             indices += [j - 2, j, j + 1]
     
 
-    lastIdx = complexity * 2
+    lastIdx = sides * 2
 
     # Closing the lower and upper base
     indices += [0, 2, lastIdx]
@@ -132,6 +130,63 @@ def createBranch(length = 1.0, ratio = 0.1, complexity = 6):
     indices += [lastIdx, lastIdx + 1, 2]
 
     return bs.Shape(vertices, indices)
+
+
+# Creates a tree using a rule of generation and order of iterations
+def createTree(order = 1, rule = "F[RF]F[LF]F", length = 1.0):
+
+    treeGraph = sg.SceneGraphNode("tree")
+
+    blueprint = "F"
+
+    for i in range(order):
+        newBlueprint = ""
+
+        for character in blueprint:
+            newBlueprint += rule if character == "F" else character
+        
+        blueprint = newBlueprint
+        length /= 3
+
+    angleList = [0]
+    zList = [0]
+    xList = [0]
+
+    for character in blueprint:
+        if character == "F":
+
+            angle = angleList[-1]
+            z = zList[-1]
+            x = xList[-1]
+
+            gpuBranch = es.toGPUShape(createBranch(length, 0.05))
+
+            branchGraph = sg.SceneGraphNode("branch")
+            branchGraph.childs += [gpuBranch]
+            branchGraph.transform = tr.matmul([tr.translate(x, 0, z), tr.rotationY(angle)])
+
+            treeGraph.childs += [branchGraph]
+
+            zList[-1] += length * np.cos(angleList[-1])
+            xList[-1] += length * np.sin(angleList[-1])
+        
+        elif character == "L":
+            angleList[-1] += -27 * np.pi / 180
+
+        elif character == "R":
+            angleList[-1] += 27 * np.pi / 180
+        
+        elif character == "[":
+            angleList += [angleList[-1]]
+            zList += [zList[-1]]
+            xList += [xList[-1]]
+        
+        elif character == "]":
+            angleList.pop()
+            zList.pop()
+            xList.pop()
+
+    return treeGraph
 
 
 # Moves the camera around a sphere looking at the center,
@@ -158,7 +213,7 @@ def moveCamera():
     viewPos = np.array([camX, camY, camZ])
     viewUp = np.array([upX, upY, upZ])
 
-    return tr.lookAt(viewPos, np.array([0,0,0]), viewUp), viewPos
+    return tr.lookAt(viewPos, np.array([0, 0, 0.5]), viewUp), viewPos
 
 
 if __name__ == "__main__":
@@ -195,8 +250,8 @@ if __name__ == "__main__":
     glEnable(GL_DEPTH_TEST)
 
     # Creating shapes on GPU memory
-    gpuBranch = es.toGPUShape(createBranch(1.0, 0.1, 6))
     gpuAxis = es.toGPUShape(bs.createAxis())
+    treeGraph = createTree(3)
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
@@ -247,6 +302,7 @@ if __name__ == "__main__":
         # In my humble opinion, natural wood isn't shiny at all
         glUniform1ui(glGetUniformLocation(lightingPipeline.shaderProgram, "shininess"), 1)
 
+        # Finishing the lighting configuration
         glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "constantAttenuation"), 0.0001)
         glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "linearAttenuation"), 0.03)
         glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "quadraticAttenuation"), 0.01)
@@ -256,7 +312,7 @@ if __name__ == "__main__":
         glUniformMatrix4fv(glGetUniformLocation(lightingPipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
 
         # Drawing the shapes
-        lightingPipeline.drawShape(gpuBranch)
+        sg.drawSceneGraphNode(treeGraph, lightingPipeline, "model")
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
         glfw.swap_buffers(window)
