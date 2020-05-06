@@ -32,7 +32,7 @@ class Controller:
     def __init__(self):
         self.fillPolygon = True
         self.showAxis = True
-        self.cameraZoom = 3
+        self.cameraZoom = 2
         self.cameraPhi = 45
         self.cameraTheta = 45
 
@@ -132,59 +132,104 @@ def createBranch(length = 1.0, ratio = 0.1, sides = 6):
     return bs.Shape(vertices, indices)
 
 
-# Creates a tree using a rule of generation and order of iterations
-def createTree(order = 1, rule = "F[RF]F[LF]F", length = 1.0):
+# Creates a tree using a rule of generation, order of iterations and size
+# There is also decay, which affects the size of branches as their distance
+# with the tree trunk increases
+def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0, decay = 0.8):
 
+    # Scene graph that will contain the whole tree
     treeGraph = sg.SceneGraphNode("tree")
 
+    # String used to construct the tree
     blueprint = "F"
+    counter = 0
+    lockCounter = 0
 
-    for i in range(order):
+    # Applies the rule to the blueprint, increasing the complexity
+    for _ in range(order):
         newBlueprint = ""
 
         for character in blueprint:
             newBlueprint += rule if character == "F" else character
         
         blueprint = newBlueprint
-        length /= 3
+    
+    # Counts how many times the rule is applied, reducing the size of the
+    # branches in order to make a tree of the given size
+    for character in rule:
 
-    angleList = [0]
-    zList = [0]
+        if character == "F":
+            counter += 1 - int(lockCounter > 0)
+        
+        elif character == "[":
+            lockCounter += 1
+        
+        elif character == "]":
+            lockCounter -= 1
+
+    size /= counter ** order
+
+    # Lists that store the information necessary to put new branches
+    phiList = [0]
+    thetaList = [0]
+    decayList = [decay]
     xList = [0]
+    yList = [0]
+    zList = [0]
 
+    allLists = [phiList, thetaList, decayList, xList, yList, zList]
+
+    # Creating the tree
     for character in blueprint:
+
         if character == "F":
 
-            angle = angleList[-1]
-            z = zList[-1]
+            phi = phiList[-1]
+            theta = thetaList[-1]
+            decay = decayList[-1]
             x = xList[-1]
+            y = yList[-1]
+            z = zList[-1]
 
-            gpuBranch = es.toGPUShape(createBranch(length, 0.05))
+            gpuBranch = es.toGPUShape(createBranch(size, 0.05))
 
             branchGraph = sg.SceneGraphNode("branch")
             branchGraph.childs += [gpuBranch]
-            branchGraph.transform = tr.matmul([tr.translate(x, 0, z), tr.rotationY(angle)])
+
+            rotation = tr.matmul([tr.rotationZ(theta), tr.rotationY(phi)])
+
+            branchGraph.transform = tr.matmul([rotation, tr.uniformScale(decay)])
+            branchGraph.transform = tr.matmul([tr.translate(x, y, z), branchGraph.transform])
 
             treeGraph.childs += [branchGraph]
 
-            zList[-1] += length * np.cos(angleList[-1])
-            xList[-1] += length * np.sin(angleList[-1])
-        
-        elif character == "L":
-            angleList[-1] += -27 * np.pi / 180
+            localSize = size * decay
 
+            xList[-1] += localSize * np.sin(phi) * np.cos(theta)
+            yList[-1] += localSize * np.sin(phi) * np.sin(theta)
+            zList[-1] += localSize * np.cos(phi)
+        
         elif character == "R":
-            angleList[-1] += 27 * np.pi / 180
+            phiList[-1] += 27 * np.pi / 180
+
+        elif character == "L":
+            phiList[-1] -= 27 * np.pi / 180
+        
+        elif character == "U":
+            thetaList[-1] += 27 * np.pi / 180
+        
+        elif character == "D":
+            thetaList[-1] -= 27 * np.pi / 180
         
         elif character == "[":
-            angleList += [angleList[-1]]
-            zList += [zList[-1]]
-            xList += [xList[-1]]
+            for ls in allLists:
+                ls.append(ls[-1])
+
+            decayList[-1] **= 2
         
         elif character == "]":
-            angleList.pop()
-            zList.pop()
-            xList.pop()
+            for ls in allLists:
+                ls.pop()
 
     return treeGraph
 
@@ -213,7 +258,7 @@ def moveCamera():
     viewPos = np.array([camX, camY, camZ])
     viewUp = np.array([upX, upY, upZ])
 
-    return tr.lookAt(viewPos, np.array([0, 0, 0.5]), viewUp), viewPos
+    return tr.lookAt(viewPos, np.array([0, 0, 0.4]), viewUp), viewPos
 
 
 if __name__ == "__main__":
@@ -251,7 +296,7 @@ if __name__ == "__main__":
 
     # Creating shapes on GPU memory
     gpuAxis = es.toGPUShape(bs.createAxis())
-    treeGraph = createTree(3)
+    treeGraph = createTree(0, "F[URF]F[RF]F[DLF]F")
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
