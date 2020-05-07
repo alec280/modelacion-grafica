@@ -1,7 +1,7 @@
 # coding=utf-8
 """
 Alexander Cuevas, CC3501, 2020-1
-Creates a low poly tree
+Creates a low poly tree and exports it as an .obj file
 """
 
 import glfw
@@ -22,18 +22,36 @@ BRANCH_ANGLE = 27 * np.pi / 180
 
 
 # Processing the parameters and name given for the .obj model
+# If something isn't provided as it should, the program will try to fix it
 systemArg = sys.argv
 
-fullName = systemArg[1]
+fullName = systemArg[1] if len(systemArg) > 1 else "unnamed.obj"
 dotIdx = fullName.find(".")
 
 NAME = fullName[:dotIdx]
 EXTENSION = fullName[dotIdx:]
 
+if not NAME.isidentifier():
+    print("Invalid name, \"unnamed\" will be used.")
+    NAME = "unnamed"
+
+if not EXTENSION == ".obj":
+    print("Invalid extension, \".obj\" will be used.")
+    EXTENSION = ".obj"
+
 RULE = systemArg[2] if len(systemArg) > 2 else "F[RF]F[LF]F"
-ORDER = int(systemArg[3]) if len(systemArg) > 3 else 1
-SIZE = float(systemArg[4]) if len(systemArg) > 4 else 1.0
-SKIP = int(systemArg[5]) if len(systemArg) > 5 else 0
+
+preOrder = systemArg[3] if len(systemArg) > 3 else "1"
+ORDER = int(preOrder) if preOrder.isdecimal() else 1
+
+preSize = systemArg[4] if len(systemArg) > 4 else "1.0"
+try:
+    SIZE = float(preSize)
+except:
+    SIZE = 1.0
+
+preSkip = systemArg[5] if len(systemArg) > 5 else "0"
+SKIP = int(preSkip) if preSkip.isdecimal() else 0
 
 
 # A class to store the application control
