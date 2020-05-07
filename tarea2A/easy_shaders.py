@@ -25,6 +25,7 @@ class GPUShape:
         self.ebo = 0
         self.texture = 0
         self.size = 0
+        self.shape = 0
 
 
 def textureSimpleSetup(texture, imgName, wrapMode, filterMode):
@@ -70,6 +71,7 @@ def toGPUShape(shape, wrapMode=None, filterMode=None):
     gpuShape.vao = glGenVertexArrays(1)
     gpuShape.vbo = glGenBuffers(1)
     gpuShape.ebo = glGenBuffers(1)
+    gpuShape.shape = shape
 
     # Vertex data must be attached to a Vertex Buffer Object (VBO)
     glBindBuffer(GL_ARRAY_BUFFER, gpuShape.vbo)

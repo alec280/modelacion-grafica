@@ -24,11 +24,16 @@ BRANCH_ANGLE = 27 * np.pi / 180
 # Processing the parameters and name given for the .obj model
 systemArg = sys.argv
 
-fullName = systemArg[0]
+fullName = systemArg[1]
 dotIdx = fullName.find(".")
 
-name = fullName[:dotIdx]
-extension = fullName[dotIdx:]
+NAME = fullName[:dotIdx]
+EXTENSION = fullName[dotIdx:]
+
+RULE = systemArg[2] if len(systemArg) > 2 else "F[RF]F[LF]F"
+ORDER = int(systemArg[3]) if len(systemArg) > 3 else 1
+SIZE = float(systemArg[4]) if len(systemArg) > 4 else 1.0
+SKIP = int(systemArg[5]) if len(systemArg) > 5 else 0
 
 
 # A class to store the application control
@@ -41,8 +46,17 @@ class Controller:
         self.cameraTheta = 45
 
 
+# A class to store export data
+class Exporter:
+    def __init__(self):
+        self.offset = True
+
+
 # Global controller that will communicate with the callback function
 controller = Controller()
+
+# Global exporter that will help in the export process
+exporter = Exporter()
 
 
 def on_key(window, key, scancode, action, mods):
@@ -81,7 +95,7 @@ def on_key(window, key, scancode, action, mods):
 
 
 # Creates a regular dodecahedron, the green channel can be modified
-def createDodecahedron(g = 0.4):
+def createLeaf(g = 0.4):
 
     # The golden ratio and its inverse
     gRa = (1 + np.sqrt(5)) / 2
@@ -106,7 +120,7 @@ def createDodecahedron(g = 0.4):
             -gRa,  0.0, -iRa, 0.0, g, 0.0, -gRa,  0.0, -iRa,
             -iRa,  gRa,  0.0, 0.0, g, 0.0, -iRa,  gRa,  0.0,
              0.0,  iRa,  gRa, 0.0, g, 0.0,  0.0,  iRa,  gRa,
-            -1.0,  1.0,  1.0, 0.0, g, 0.0,  1.0,  1.0, -1.0,
+            -1.0,  1.0,  1.0, 0.0, g, 0.0, -1.0,  1.0,  1.0,
             -1.0, -1.0,  1.0, 0.0, g, 0.0, -1.0, -1.0,  1.0,
             -gRa,  0.0,  iRa, 0.0, g, 0.0, -gRa,  0.0,  iRa,
              0.0, -iRa,  gRa, 0.0, g, 0.0,  0.0, -iRa,  gRa]
@@ -182,31 +196,13 @@ def createBranch(length = 1.0, ratio = 0.1, sides = 6):
     return bs.Shape(vertices, indices)
 
 
-# Creates a dodecahedron of a certain size and green coloration to
-# be used as leaves for a tree, it returns a scene graph
-def createLeaf(size = 0.2, green = 0.4):
-
-    # Scene graph that will contain the scaled leaf
-    scaledLeafGraph = sg.SceneGraphNode("scaledLeaf")
-    scaledLeafGraph.transform = tr.uniformScale(size)
-    scaledLeafGraph.childs += [es.toGPUShape(createDodecahedron(green))]
-
-    # Final scene graph
-    leafGraph = sg.SceneGraphNode("leaf")
-    leafGraph.childs += [scaledLeafGraph]
-
-    return leafGraph
-
-
-
 # Creates a tree using a rule of generation, order of iterations and size
-# There is also decay, which affects the size of branches as their distance
-# with the tree trunk increases
-def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
+# There is also skip, which makes so the tree skips the creation of some leaves
+def createTree(rule = "F[RF]F[LF]F", order = 1, size = 1.0, skip = 0):
 
     # The different parts of the tree with different materials
     woodGraph = sg.SceneGraphNode("wood")
-    leavesGraph = sg.SceneGraphNode("leaf")
+    leavesGraph = sg.SceneGraphNode("leaves")
 
     # Scene graph that will contain the whole tree
     treeGraph = sg.SceneGraphNode("tree")
@@ -214,6 +210,8 @@ def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
 
     # String used to construct the tree
     blueprint = "F"
+    
+    # Variables used to keep the size consistent
     counter = 0
     lockCounter = 0
 
@@ -243,6 +241,10 @@ def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
 
     size /= counter ** order
 
+    # Base gpu shapes
+    gpuBranch = es.toGPUShape(createBranch(size, 0.05))
+    gpuLeaf = es.toGPUShape(createLeaf())
+
     # Lists that store the information necessary to put new branches
     phiList = [0]
     thetaList = [0]
@@ -266,9 +268,6 @@ def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
             y = yList[-1]
             z = zList[-1]
 
-            # Adding the model to the tree graph
-            gpuBranch = es.toGPUShape(createBranch(size, 0.05))
-
             # Adding the wood
             branchGraph = sg.SceneGraphNode("branch")
             branchGraph.childs += [gpuBranch]
@@ -288,10 +287,10 @@ def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
             zList[-1] += localSize * np.cos(phi)
         
         # Changing the angle of the next branch using a spherical system
-        elif character == "R":
+        elif character == "L":
             phiList[-1] += BRANCH_ANGLE
 
-        elif character == "L":
+        elif character == "R":
             phiList[-1] -= BRANCH_ANGLE
         
         elif character == "U":
@@ -309,16 +308,23 @@ def createTree(order = 1, rule = "F[RF]F[LF]F", size = 1.0):
         
         # Closing a path, sometimes with a leaf
         elif character == "]":
+            
+            if skip > 0:
+                skip -= 1  
 
-            x = xList[-1]
-            y = yList[-1]
-            z = zList[-1]
+            else:              
+                x = xList[-1]
+                y = yList[-1]
+                z = zList[-1]
 
-            # Adding a leaf at the end of a path
-            leafGraph = createLeaf(0.2 * size * decayList[-1])
-            leafGraph.transform = tr.translate(x, y, z)
+                # Adding a leaf at the end of a path
+                leafGraph = sg.SceneGraphNode("leaf")
+                leafGraph.childs += [gpuLeaf]
 
-            leavesGraph.childs += [leafGraph]
+                leafSize = tr.uniformScale(0.2 * size * decayList[-1])
+                leafGraph.transform = tr.matmul([tr.translate(x, y, z), leafSize])
+
+                leavesGraph.childs += [leafGraph]
 
             for ls in allLists:
                 ls.pop()
@@ -353,6 +359,83 @@ def moveCamera():
     return tr.lookAt(viewPos, np.array([0, 0, 0.4]), viewUp), viewPos
 
 
+# Auxiliary function that saves shape data when exporting to a file
+def exportGraphHelper(f, graph, transformList = [tr.identity()]):
+
+    global exporter
+
+    if type(graph) is es.GPUShape:
+
+        offsetCopy = exporter.offset
+        transform = tr.matmul(transformList)
+
+        vertexLine = "v %s %s %s \nvt %s %s %s"
+        indexLine = "f %s//%s %s//%s %s//%s"
+
+        vertexData = []
+        normalData = []
+
+        indexData = []
+
+        shape = graph.shape
+
+        # Saving the vertex and normal data
+        for i, vertex in enumerate(shape.vertices):
+
+            if i % 9 == 0:
+                vertexData = [vertex]
+                
+            elif i % 9 < 3:
+                vertexData.append(vertex)
+            
+            elif i % 9 == 6:
+                normalData = [vertex]
+            
+            elif i % 9 > 5:
+                normalData.append(vertex)
+                
+            if i % 9 == 8:
+                
+                vertexData = list(tr.matmul([transform, vertexData + [1]]))
+
+                f.write(vertexLine % tuple(vertexData[:3] + normalData) + '\n')
+                offsetCopy += 1
+            
+        # Saving the index data
+        for i, index in enumerate(shape.indices):
+
+            offIndex = index + exporter.offset
+
+            if i % 3 == 0:
+                indexData = [offIndex, offIndex]
+                
+            elif i % 3 == 1:
+                indexData += [offIndex, offIndex]
+
+            else:
+                indexData += [offIndex, offIndex]
+                f.write(indexLine % tuple(indexData) + '\n')
+        
+        exporter.offset = offsetCopy
+        
+    else:
+        nextTransform = transformList + [graph.transform]
+        
+        # Continue with its children
+        for child in graph.childs:
+            exportGraphHelper(f, child, nextTransform)
+
+
+# Exports a given tree to .obj, using the documentation in formats.pdf
+def exportTree(tree):
+
+    # File with the given name
+    newFile = open(NAME + EXTENSION,"w")
+
+    newFile.write("# 3D Tree\n")
+    exportGraphHelper(newFile, tree)
+
+
 # Draws a given tree using a pipeline
 def drawTree(tree, pipeline):
 
@@ -361,7 +444,7 @@ def drawTree(tree, pipeline):
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Kd"), 0.5, 0.5, 0.5)
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ks"), 0.1, 0.1, 0.1)
 
-    # In my humble opinion, natural wood isn't shiny at all
+    # In my humble opinion, natural wood and leaves aren't shiny at all
     glUniform1ui(glGetUniformLocation(pipeline.shaderProgram, "shininess"), 1)
 
     # Drawing the shapes
@@ -404,7 +487,10 @@ if __name__ == "__main__":
 
     # Creating shapes on GPU memory
     gpuAxis = es.toGPUShape(bs.createAxis())
-    treeGraph = createTree(2, "F[URF]F[RF]F[DLF]F")
+    treeGraph = createTree(RULE, ORDER, SIZE, SKIP)
+
+    if EXTENSION == ".obj":
+        exportTree(treeGraph)
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
