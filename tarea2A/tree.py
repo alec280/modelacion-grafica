@@ -67,7 +67,7 @@ class Controller:
 # A class to store export data
 class Exporter:
     def __init__(self):
-        self.offset = True
+        self.offset = 1
 
 
 # Global controller that will communicate with the callback function
@@ -447,11 +447,15 @@ def exportGraphHelper(f, graph, transformList = [tr.identity()]):
 # Exports a given tree to .obj, using the documentation in formats.pdf
 def exportTree(tree):
 
+    global exporter
+
     # File with the given name
     newFile = open(NAME + EXTENSION,"w")
 
     newFile.write("# 3D Tree\n")
     exportGraphHelper(newFile, tree)
+
+    exporter.offset = 1
 
 
 # Draws a given tree using a pipeline
