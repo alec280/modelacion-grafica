@@ -387,7 +387,7 @@ def exportGraphHelper(f, graph, transformList = [tr.identity()]):
         offsetCopy = exporter.offset
         transform = tr.matmul(transformList)
 
-        vertexLine = "v %s %s %s \nvt %s %s %s"
+        vertexLine = "v %s %s %s \nvn %s %s %s"
         indexLine = "f %s//%s %s//%s %s//%s"
 
         vertexData = []

@@ -43,19 +43,8 @@ if not EXTENSION == ".obj":
     print("Invalid extension, \".obj\" will be used.")
     EXTENSION = ".obj"
 
-RULE = systemArg[2] if len(systemArg) > 2 else "F[RF]F[LF]F"
-
-preOrder = systemArg[3] if len(systemArg) > 3 else "1"
-ORDER = int(preOrder) if preOrder.isdecimal() else 1
-
-preSize = systemArg[4] if len(systemArg) > 4 else "1.0"
-try:
-    SIZE = float(preSize)
-except:
-    SIZE = 1.0
-
-preSkip = systemArg[5] if len(systemArg) > 5 else "0"
-SKIP = int(preSkip) if preSkip.isdecimal() else 0
+preAmount = systemArg[2] if len(systemArg) > 2 else "5"
+G_AMOUNT = int(preAmount) if preAmount.isdecimal() else 5
 
 
 # A class to store the application control
@@ -127,11 +116,11 @@ def altitudeColor(z):
 
     # Returns a dirtier color below 0
     if z <= 0:
-        z = min(5, abs(z)) / 5
+        z = min(3, abs(z)) / 3
         return bronzeii * z + yellowGreen * (1 - z)
     
     # Returns a greener color above 0
-    z = min(5, z) / 5
+    z = min(3, z) / 3
     return forestGreen * z + yellowGreen * (1 - z)
 
 
@@ -166,12 +155,29 @@ def generateTerrain(xs, ys, s, sigma, mu):
 
     zs = np.zeros((xSize, ySize))
 
-    # We generate a vertex for each sample x, y, z
+    muList = []
+
+    # Each gaussian function is randomized
+    for _ in range(G_AMOUNT):
+        random = 2 * np.random.uniform(0, 1.0, 2) - 1.0
+        random[0] *= MAP_X_SIZE
+        random[1] *= MAP_Y_SIZE
+
+        print(random)
+
+        muList += [np.copy(random)]
+
+    # Generating a vertex for each sample x, y, z, using a
+    # number of gaussian functions defined as a parameter
     for i in range(xSize):
         for j in range(ySize):
             x = xs[i]
             y = ys[j]
-            z = gaussianFunction(x, y, s, sigma, mu)
+            z = 0
+
+            for mx in muList:
+                z += gaussianFunction(x, y, s, sigma, mx)
+
             zs[i, j] = z
 
             verticesList += [[x, y, z] + list(altitudeColor(z))]
@@ -199,7 +205,7 @@ def generateTerrain(xs, ys, s, sigma, mu):
             ine = index(i+1,j+1)
             inw = index(i,j+1)
 
-            # adding this cell's quad as 2 triangles
+            # Adding this cell's quad as 2 triangles
             indices += [
                 isw, ise, ine,
                 ine, inw, isw
@@ -249,7 +255,7 @@ def exportForest(forest):
 def drawTerrain(terrain, pipeline):
 
     # Object is barely visible at only ambient and brighter for the diffuse component.
-    glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ka"), 0.4, 0.4, 0.4)
+    glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ka"), 0.35, 0.35, 0.35)
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Kd"), 0.5, 0.5, 0.5)
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ks"), 0.1, 0.1, 0.1)
 
@@ -353,7 +359,7 @@ if __name__ == "__main__":
         # Constants of the light
         glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "constantAttenuation"), 0.0001)
         glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "linearAttenuation"), 0.03)
-        glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "quadraticAttenuation"), 0.001)
+        glUniform1f(glGetUniformLocation(lightingPipeline.shaderProgram, "quadraticAttenuation"), 0.002)
 
         # Finishing the lighting configuration, the "sun" is always located above one corner of the map
         glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "lightPosition"), MAP_X_SIZE, MAP_Y_SIZE, 10)
