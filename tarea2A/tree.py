@@ -162,7 +162,7 @@ def createLeaf(g = 0.4):
 # Ratio: Size of the bases of the shape in proportion to the lenght
 # Sides: How many sides are used to create the bases of the shape,
 # must be greater than 2
-def createBranch(length = 1.0, ratio = 0.1, sides = 6):
+def createBranch(length = 1.0, ratio = 0.1, sides = 5):
 
     radius = length * ratio
     angle = 360 / sides

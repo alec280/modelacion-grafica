@@ -21,8 +21,8 @@ import tree
 
 # Constants that define the size of the map, from 0 towards a cardinal direction
 # meaning that MAP_X_SIZE = 10 limits the map to x = -10 and x = 10
-MAP_X_SIZE = 10
-MAP_Y_SIZE = 10
+MAP_X_SIZE = 5
+MAP_Y_SIZE = 5
 
 
 # Processing the parameters and name given for the .obj model
@@ -43,8 +43,8 @@ if not EXTENSION == ".obj":
     print("Invalid extension, \".obj\" will be used.")
     EXTENSION = ".obj"
 
-preAmount = systemArg[2] if len(systemArg) > 2 else "5"
-G_AMOUNT = int(preAmount) if preAmount.isdecimal() else 5
+preAmount = systemArg[2] if len(systemArg) > 2 else "7"
+G_AMOUNT = int(preAmount) if preAmount.isdecimal() else 7
 
 
 # A class to store the application control
@@ -116,11 +116,11 @@ def altitudeColor(z):
 
     # Returns a dirtier color below 0
     if z <= 0:
-        z = min(3, abs(z)) / 3
+        z = min(1, abs(z)) / 1
         return bronzeii * z + yellowGreen * (1 - z)
     
     # Returns a greener color above 0
-    z = min(3, z) / 3
+    z = min(1, z) / 1
     return forestGreen * z + yellowGreen * (1 - z)
 
 
@@ -142,8 +142,42 @@ def terrainNormal(x, y, zs, i, j):
     return list(np.cross(firstVextex, secondVextex))
 
 
+# Creates a forest with happy little trees to be put above a terrain
+def plantTrees(zMap, density = 1.0, order = 1):
+
+    # Graph that will contain all the trees
+    forestGraph = sg.SceneGraphNode("forest")
+
+    xSize = zMap.shape[0]
+    ySize = zMap.shape[1]
+
+    dx = 2 * MAP_X_SIZE / xSize
+    dy = 2 * MAP_Y_SIZE / ySize
+
+    x = -MAP_X_SIZE
+
+    # Plants a tree in a (x, y, z) position
+    for i in range(zMap.shape[0]):
+
+        y = -MAP_Y_SIZE
+
+        for j in range(zMap.shape[1]):
+
+            if i % 8 == 4 and j % 8 == 4:
+
+                treeGraph = tree.createTree(tree.RULE, order, tree.SIZE, tree.SKIP)
+                treeGraph.transform = tr.translate(x, y, zMap[i, j] - 0.05)
+
+                forestGraph.childs += [treeGraph]
+            
+            y += dy
+        x += dx
+
+    return forestGraph
+
+
 # Generates terrain using gaussian functions
-def generateTerrain(xs, ys, s, sigma, mu):
+def generateTerrain(xs, ys, s):
 
     verticesList = []
 
@@ -156,6 +190,8 @@ def generateTerrain(xs, ys, s, sigma, mu):
     zs = np.zeros((xSize, ySize))
 
     muList = []
+    sigmaList = []
+    signList = []
 
     # Each gaussian function is randomized
     for _ in range(G_AMOUNT):
@@ -163,9 +199,9 @@ def generateTerrain(xs, ys, s, sigma, mu):
         random[0] *= MAP_X_SIZE
         random[1] *= MAP_Y_SIZE
 
-        print(random)
-
         muList += [np.copy(random)]
+        sigmaList += [max(1, s - np.random.uniform())]
+        signList += [1] if np.random.uniform() > 0.3 else [-1]
 
     # Generating a vertex for each sample x, y, z, using a
     # number of gaussian functions defined as a parameter
@@ -175,8 +211,8 @@ def generateTerrain(xs, ys, s, sigma, mu):
             y = ys[j]
             z = 0
 
-            for mx in muList:
-                z += gaussianFunction(x, y, s, sigma, mx)
+            for sigma, mu, sign in zip(sigmaList, muList, signList):
+                z += gaussianFunction(x, y, s, sigma, mu) * sign
 
             zs[i, j] = z
 
@@ -211,7 +247,7 @@ def generateTerrain(xs, ys, s, sigma, mu):
                 ine, inw, isw
             ]
 
-    return bs.Shape(vertices, indices)
+    return bs.Shape(vertices, indices), zs
 
 
 # Moves the camera around a sphere looking at the center,
@@ -251,19 +287,19 @@ def exportForest(forest):
     tree.exportGraphHelper(newFile, forest)
 
 
-# Draws a given terrain using a pipeline
-def drawTerrain(terrain, pipeline):
+# Draws a given map using a pipeline
+def drawMap(map, pipeline):
 
     # Object is barely visible at only ambient and brighter for the diffuse component.
-    glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ka"), 0.35, 0.35, 0.35)
+    glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ka"), 0.3, 0.3, 0.3)
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Kd"), 0.5, 0.5, 0.5)
     glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ks"), 0.1, 0.1, 0.1)
 
-    # The terrain shouldn't be that shiny
+    # The map shouldn't be that shiny
     glUniform1ui(glGetUniformLocation(pipeline.shaderProgram, "shininess"), 1)
 
     # Drawing the shapes
-    sg.drawSceneGraphNode(terrain, pipeline, "model")
+    sg.drawSceneGraphNode(map, pipeline, "model")
 
 
 # Main function
@@ -304,16 +340,17 @@ if __name__ == "__main__":
     gpuAxis = es.toGPUShape(bs.createAxis())
 
     # Generate a terrain with 80 samples between the limits of the map
-    xs = np.ogrid[-MAP_X_SIZE:MAP_X_SIZE:80j]
-    ys = np.ogrid[-MAP_Y_SIZE:MAP_Y_SIZE:80j]
-    terrainShape = es.toGPUShape(generateTerrain(xs, ys, 2, 1, [0, 0]))
+    xs = np.ogrid[-MAP_X_SIZE:MAP_X_SIZE:40j]
+    ys = np.ogrid[-MAP_Y_SIZE:MAP_Y_SIZE:40j]
 
-    # Creating the scene graphs
-    treeGraph = tree.createTree(tree.RULE, tree.ORDER, tree.SIZE, tree.SKIP)
-    treeGraph.transform = tr.translate(0, 0, 0.7)
+    terrainShape, zs = generateTerrain(xs, ys, 3)
 
+    # Creating the scene graph
     terrainGraph = sg.SceneGraphNode("terrain")
-    terrainGraph.childs += [terrainShape]
+    terrainGraph.childs += [es.toGPUShape(terrainShape)]
+
+    mapGraph = sg.SceneGraphNode("map")
+    mapGraph.childs += [terrainGraph, plantTrees(zs)]
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
@@ -366,8 +403,7 @@ if __name__ == "__main__":
         glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "viewPosition"), viewPos[0], viewPos[1], viewPos[2])
 
         # Drawing the shapes according to material properties
-        drawTerrain(terrainGraph, lightingPipeline)
-        tree.drawTree(treeGraph, lightingPipeline)
+        drawMap(mapGraph, lightingPipeline)
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
         glfw.swap_buffers(window)
