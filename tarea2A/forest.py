@@ -43,8 +43,20 @@ if not EXTENSION == ".obj":
     print("Invalid extension, \".obj\" will be used.")
     EXTENSION = ".obj"
 
-preAmount = systemArg[2] if len(systemArg) > 2 else "7"
-G_AMOUNT = int(preAmount) if preAmount.isdecimal() else 7
+preGaussian = systemArg[2] if len(systemArg) > 2 else "7"
+GAUSSIAN = int(preGaussian) if preGaussian.isdecimal() else 7
+
+preS = systemArg[3] if len(systemArg) > 3 else "3"
+S = int(preS) if preS.isdecimal() else 3
+
+preRandom = systemArg[4] if len(systemArg) > 4 else "0"
+RANDOM = int(preRandom) if preRandom.isdecimal() else 0
+
+preDensity = systemArg[5] if len(systemArg) > 5 else "1"
+DENSITY = int(preDensity) if preDensity.isdecimal() else 1
+
+preOrder = systemArg[6] if len(systemArg) > 6 else "1"
+ORDER = int(preOrder) if preOrder.isdecimal() else 1
 
 
 # A class to store the application control
@@ -154,19 +166,29 @@ def plantTrees(zMap, density = 1.0, order = 1):
     dx = 2 * MAP_X_SIZE / xSize
     dy = 2 * MAP_Y_SIZE / ySize
 
-    x = -MAP_X_SIZE
+    x = -MAP_X_SIZE + dx / 2
 
     # Plants a tree in a (x, y, z) position
     for i in range(zMap.shape[0]):
 
-        y = -MAP_Y_SIZE
+        y = -MAP_Y_SIZE + dy / 2
 
         for j in range(zMap.shape[1]):
 
             if i % 8 == 4 and j % 8 == 4:
 
-                treeGraph = tree.createTree(tree.RULE, order, tree.SIZE, tree.SKIP)
-                treeGraph.transform = tr.translate(x, y, zMap[i, j] - 0.05)
+                # Burying the tree a little to ensure it isn't floating
+                normal = terrainNormal(xSize, ySize, zMap, i, j)
+                correction = (abs(normal[0]) + abs(normal[1])) / 5
+                
+                # Randomizing the order and size
+                np.random.seed(RANDOM + i + j)
+                variance = np.random.uniform()
+                realOrder = order + int(variance > 0.7)
+                realSize = tree.SIZE + int(variance > 0.7)
+
+                treeGraph = tree.createTree(tree.RULE, realOrder, realSize, tree.SKIP)
+                treeGraph.transform = tr.translate(x, y, zMap[i, j] - correction)
 
                 forestGraph.childs += [treeGraph]
             
@@ -194,12 +216,15 @@ def generateTerrain(xs, ys, s):
     signList = []
 
     # Each gaussian function is randomized
-    for _ in range(G_AMOUNT):
+    for i in range(GAUSSIAN):
+
+        np.random.seed(RANDOM + i)
         random = 2 * np.random.uniform(0, 1.0, 2) - 1.0
         random[0] *= MAP_X_SIZE
         random[1] *= MAP_Y_SIZE
 
         muList += [np.copy(random)]
+        
         sigmaList += [max(1, s - np.random.uniform())]
         signList += [1] if np.random.uniform() > 0.3 else [-1]
 
@@ -343,14 +368,14 @@ if __name__ == "__main__":
     xs = np.ogrid[-MAP_X_SIZE:MAP_X_SIZE:40j]
     ys = np.ogrid[-MAP_Y_SIZE:MAP_Y_SIZE:40j]
 
-    terrainShape, zs = generateTerrain(xs, ys, 3)
+    terrainShape, zs = generateTerrain(xs, ys, S)
 
     # Creating the scene graph
     terrainGraph = sg.SceneGraphNode("terrain")
     terrainGraph.childs += [es.toGPUShape(terrainShape)]
 
     mapGraph = sg.SceneGraphNode("map")
-    mapGraph.childs += [terrainGraph, plantTrees(zs)]
+    mapGraph.childs += [terrainGraph, plantTrees(zs, DENSITY, ORDER)]
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
