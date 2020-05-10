@@ -21,8 +21,8 @@ import tree
 
 # Constants that define the size of the map, from 0 towards a cardinal direction
 # meaning that MAP_X_SIZE = 10 limits the map to x = -10 and x = 10
-MAP_X_SIZE = 5
-MAP_Y_SIZE = 5
+MAP_X_SIZE = 4
+MAP_Y_SIZE = 4
 
 
 # Processing the parameters and name given for the .obj model
@@ -55,8 +55,10 @@ RANDOM = int(preRandom) if preRandom.isdecimal() else 0
 preDensity = systemArg[5] if len(systemArg) > 5 else "1"
 DENSITY = int(preDensity) if preDensity.isdecimal() else 1
 
-preOrder = systemArg[6] if len(systemArg) > 6 else "1"
-ORDER = int(preOrder) if preOrder.isdecimal() else 1
+preOrder = systemArg[6] if len(systemArg) > 6 else "2"
+ORDER = int(preOrder) if preOrder.isdecimal() else 2
+
+COMPLEXITY = 4
 
 
 # A class to store the application control
@@ -154,8 +156,25 @@ def terrainNormal(x, y, zs, i, j):
     return list(np.cross(firstVextex, secondVextex))
 
 
+# Creates the rules for a tree using randomness
+def treeRule(order = 1):
+
+    rule = "F"
+
+    # Branch position
+    branch = ["[RF]", "[LF]", "[RUUF]", "[LDDF]", "[RDF][LUF]", "[RDDF][LUUF]"]
+    branch += ["[RDDF[RUUF]F]", "[LUUF[LDDF]F]", "[RF[LUF]F]", "[LF[RDF]F]"]
+
+    for _ in range(max(1, COMPLEXITY - order * 2)):
+        randint = int(np.random.randint(0, len(branch)))
+        rule += branch[randint] + "F"
+
+    return rule
+
+
 # Creates a forest with happy little trees to be put above a terrain
-def plantTrees(zMap, density = 1.0, order = 1):
+# Order was considered as a parameter, but it was replaced by complexity due to his cost
+def plantTrees(zMap, density = 1, order = 1):
 
     # Graph that will contain all the trees
     forestGraph = sg.SceneGraphNode("forest")
@@ -168,6 +187,9 @@ def plantTrees(zMap, density = 1.0, order = 1):
 
     x = -MAP_X_SIZE + dx / 2
 
+    # Choosing where to plant trees
+    treeCoordinates = np.random.randint(0, 40 / density, zMap.shape)
+
     # Plants a tree in a (x, y, z) position
     for i in range(zMap.shape[0]):
 
@@ -175,19 +197,32 @@ def plantTrees(zMap, density = 1.0, order = 1):
 
         for j in range(zMap.shape[1]):
 
-            if i % 8 == 4 and j % 8 == 4:
+            if treeCoordinates[i, j] == 0:
 
                 # Burying the tree a little to ensure it isn't floating
                 normal = terrainNormal(xSize, ySize, zMap, i, j)
                 correction = (abs(normal[0]) + abs(normal[1])) / 5
                 
-                # Randomizing the order and size
-                np.random.seed(RANDOM + i + j)
+                # Randomizing the order, size and skip parameters
+                np.random.seed(RANDOM + i * j)
                 variance = np.random.uniform()
-                realOrder = order + int(variance > 0.7)
-                realSize = tree.SIZE + int(variance > 0.7)
+                realOrder = max(1, ORDER - int(variance > 0.4))
+                realSize = tree.SIZE + 0.4 * int(variance > 0.6) + 0.2 * int(variance > 0.8)
+                realSize += (realOrder - 1) * 0.5
+                realSkip = np.random.randint(0, realOrder**2 + 1)
 
-                treeGraph = tree.createTree(tree.RULE, realOrder, realSize, tree.SKIP)
+                # Randomizing the rule of creation
+                realRule = treeRule(realOrder)
+
+                # Trees can't be planted close to each other
+                for k in range(i, i + int(realSize + realOrder)):
+                    for l in range(j, j + int(realSize + realOrder)):
+                        try:
+                            treeCoordinates[k, l] = 1
+                        except:
+                            pass
+
+                treeGraph = tree.createTree(realRule, realOrder, realSize, realSkip)
                 treeGraph.transform = tr.translate(x, y, zMap[i, j] - correction)
 
                 forestGraph.childs += [treeGraph]
@@ -374,8 +409,11 @@ if __name__ == "__main__":
     terrainGraph = sg.SceneGraphNode("terrain")
     terrainGraph.childs += [es.toGPUShape(terrainShape)]
 
-    mapGraph = sg.SceneGraphNode("map")
-    mapGraph.childs += [terrainGraph, plantTrees(zs, DENSITY, ORDER)]
+    forestGraph = sg.SceneGraphNode("forest")
+    forestGraph.childs += [terrainGraph, plantTrees(zs, DENSITY * 2, 1)]
+
+    if EXTENSION == ".obj":
+        exportForest(forestGraph)
 
     # Setting up the projection
     projection = tr.perspective(45, float(width)/float(height), 0.1, 100)
@@ -428,7 +466,7 @@ if __name__ == "__main__":
         glUniform3f(glGetUniformLocation(lightingPipeline.shaderProgram, "viewPosition"), viewPos[0], viewPos[1], viewPos[2])
 
         # Drawing the shapes according to material properties
-        drawMap(mapGraph, lightingPipeline)
+        drawMap(forestGraph, lightingPipeline)
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
         glfw.swap_buffers(window)
