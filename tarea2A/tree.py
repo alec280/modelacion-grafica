@@ -44,14 +44,14 @@ RULE = systemArg[2] if len(systemArg) > 2 else "F[RF]F[LF]F"
 preOrder = systemArg[3] if len(systemArg) > 3 else "1"
 ORDER = int(preOrder) if preOrder.isdecimal() else 1
 
-preSize = systemArg[4] if len(systemArg) > 4 else "1.0"
+preSkip = systemArg[4] if len(systemArg) > 4 else "0"
+SKIP = int(preSkip) if preSkip.isdecimal() else 0
+
+preSize = systemArg[5] if len(systemArg) > 5 else "1.0"
 try:
     SIZE = float(preSize)
 except:
     SIZE = 1.0
-
-preSkip = systemArg[5] if len(systemArg) > 5 else "0"
-SKIP = int(preSkip) if preSkip.isdecimal() else 0
 
 
 # A class to store the application control

@@ -52,11 +52,14 @@ S = int(preS) if preS.isdecimal() else 3
 preRandom = systemArg[4] if len(systemArg) > 4 else "0"
 RANDOM = int(preRandom) if preRandom.isdecimal() else 0
 
-preDensity = systemArg[5] if len(systemArg) > 5 else "1"
-DENSITY = int(preDensity) if preDensity.isdecimal() else 1
-
-preOrder = systemArg[6] if len(systemArg) > 6 else "2"
+preOrder = systemArg[5] if len(systemArg) > 5 else "2"
 ORDER = int(preOrder) if preOrder.isdecimal() else 2
+
+preDensity = systemArg[6] if len(systemArg) > 6 else "1.0"
+try:
+    DENSITY = float(preDensity)
+except:
+    DENSITY = 1.0
 
 COMPLEXITY = 4
 
@@ -410,7 +413,7 @@ if __name__ == "__main__":
     terrainGraph.childs += [es.toGPUShape(terrainShape)]
 
     forestGraph = sg.SceneGraphNode("forest")
-    forestGraph.childs += [terrainGraph, plantTrees(zs, DENSITY * 2, 1)]
+    forestGraph.childs += [terrainGraph, plantTrees(zs, DENSITY, 1)]
 
     if EXTENSION == ".obj":
         exportForest(forestGraph)
