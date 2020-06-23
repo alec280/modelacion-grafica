@@ -31,7 +31,7 @@ H2 = data["H2"]
 
 # Conditions
 ambient_temperature = data["ambient_temperature"]
-window_loss = data["window_loss"]  #du/dx at window
+window_loss = -data["window_loss"] #du/dx at window
 heater_power = data["heater_power"] #du/dx at heater
 windows = data["windows"]
 
@@ -90,12 +90,31 @@ def boundary_check(i, j, xs, ys):
 # Assings values to M according to the mode used
 def asign(M, k, kls, mode):
     if mode == 4:
+        M[k, k] = -1
         return
     M[k, kls[0]] = 1 + int(mode == 1) - int(mode == 7)
     M[k, kls[1]] = 1 + int(mode == 7) - int(mode == 1)
     M[k, kls[2]] = 1 + int(mode == 3) - int(mode == 5)
     M[k, kls[3]] = 1 + int(mode == 5) - int(mode == 3)
     M[k, k] = -4
+
+def set_window(M, m, k, kls, i, closed, ls):
+    global window_loss
+    global ambient_temperature
+
+    if closed:
+        M[k, kls[1]] = 2
+        M[k, kls[2]] = 1 + int(i == ls[1]) - int(i == ls[0])
+        M[k, kls[3]] = 1 + int(i == ls[0]) - int(i == ls[1])
+        M[k, k] = -4
+        m[k] = -2 * h * window_loss
+    else:
+        m[k] = -ambient_temperature
+    
+        #Equation associated with j - 1
+        k = getK(i, j - 1)
+        A[k, getK(i, j)] = 0
+        b[k] = -ambient_temperature
 
 
 # Matrix of unknown coefficients
@@ -136,11 +155,18 @@ for i in range(0, nh):
 
             # Checks if the point is in a wall parallel to the heater
             parallel = boundary_check(i, j, parallel_xs, parallel_ys)
-            if parallel != -1:
+            if parallel > 1:
                 asign(A, k, kls, parallel)
             else:
                 perpendicular = boundary_check(i, j, perpendicular_xs, perpendicular_ys)
-                asign(A, k, kls, perpendicular)
+                if parallel == 1 and perpendicular == -1:
+                    asign(A, k, kls, parallel)
+                elif parallel == 1 and perpendicular == 5:
+                    A[k, k_up] = 2
+                    A[k, k_right] = 2
+                    A[k, k] = -4
+                else:
+                    asign(A, k, kls, perpendicular)
         
         # Left
         elif i == 0 and 1 <= j <= nv - 2:
@@ -157,29 +183,22 @@ for i in range(0, nh):
         
         # Top
         elif 1 <= i <= nh - 2 and j == nv - 1:
-            A[k, k_left] = 1
-            A[k, k_right] = 1
-            A[k, k] = -4
+            A[k, k] = -1
 
             if 1 <= i <= idx(L):
-                A[k, k_down] = 1 + windows[0]
-                b[k] = -2 * h * window_loss if bool(windows[0]) else -ambient_temperature
+                set_window(A, b, k, kls, i, bool(windows[0]), [1, idx(L)])
             
             elif idx(L + W) <= i <= idx(2 * L + W):
-                A[k, k_down] = 1 + windows[1]
-                b[k] = -2 * h * window_loss if bool(windows[1]) else -ambient_temperature
+                set_window(A, b, k, kls, i, bool(windows[1]), [idx(L + W), idx(2 * L + W)])
             
             elif idx(2 * (L + W)) <= i <= idx(3 * L + 2 * W):
-                A[k, k_down] = 1 + windows[2]
-                b[k] = -2 * h * window_loss if bool(windows[2]) else -ambient_temperature
+                set_window(A, b, k, kls, i, bool(windows[2]), [idx(2 * (L + W)), idx(3 * L + 2 * W)])
             
             elif idx(3 * (L + W)) <= i <= idx(4 * L + 3 * W):
-                A[k, k_down] = 1 + windows[3]
-                b[k] = -2 * h * window_loss if bool(windows[3]) else -ambient_temperature
+                set_window(A, b, k, kls, i, bool(windows[3]), [idx(3 * (L + W)), idx(4 * L + 3 * W)])
             
             elif idx(4 * (L + W)) <= i <= idx(5 * L + 4 * W):
-                A[k, k_down] = 1 + windows[4]
-                b[k] = -2 * h * window_loss if bool(windows[4]) else -ambient_temperature
+                set_window(A, b, k, kls, i, bool(windows[4]), [idx(4 * (L + W)), idx(5 * L + 4 * W)])
 
         # Corner lower left
         elif (i, j) == (0, 0):
@@ -195,17 +214,33 @@ for i in range(0, nh):
 
         # Corner upper left
         elif (i, j) == (0, nv - 1):
-            A[k, k_down] = 1 + windows[0]
-            A[k, k_right] = 2
-            A[k, k] = -4
-            b[k] = -2 * h * window_loss if bool(windows[0]) else -ambient_temperature
+            if bool(windows[0]):
+                A[k, k_down] = 2
+                A[k, k_right] = 2
+                A[k, k] = -4
+                b[k] = -2 * h * window_loss
+            else:
+                A[k, k] = -1
+                b[k] = -ambient_temperature
+
+                k2 = getK(i, j - 1)
+                A[k2, getK(i, j)] = 0
+                b[k2] = -ambient_temperature
 
         # Corner upper right
         elif (i, j) == (nh - 1, nv - 1):
-            A[k, k_down] = 1 + windows[4]
-            A[k, k_left] = 2
-            A[k, k] = -4
-            b[k] = -2 * h * window_loss if bool(windows[4]) else -ambient_temperature
+            if bool(windows[4]):
+                A[k, k_down] = 2
+                A[k, k_left] = 2
+                A[k, k] = -4
+                b[k] = -2 * h * window_loss
+            else:
+                A[k, k] = -1
+                b[k] = -ambient_temperature
+
+                k2 = getK(i, j - 1)
+                A[k2, getK(i, j)] = 0
+                b[k2] = -ambient_temperature
 
         else:
             print("Point (" + str(i) + ", " + str(j) + ") missed!")
@@ -222,22 +257,6 @@ u = np.zeros((nh, nv))
 for k in range(0, N):
     i, j = getIJ(k)
     u[i, j] = x[k]
-
-# Dirichlet boundary conditions (top side)
-if not bool(windows[0]):
-    u[1 : idx(L) + 1, nv - 1] = ambient_temperature
-
-if not bool(windows[1]):
-    u[idx(L + W) : idx(2 * L + W) + 1, nv - 1] = ambient_temperature
-
-if not bool(windows[2]):
-    u[idx(2 * (L + W)) : idx(3 * L + 2 * W) + 1, nv - 1] = ambient_temperature
-
-if not bool(windows[3]):
-    u[idx(3 * (L + W)) : idx(4 * L + 3 * W) + 1, nv - 1] = ambient_temperature
-
-if not bool(windows[4]):
-    u[idx(4 * (L + W)) : idx(5 * L + 4 * W) + 1, nv - 1] = ambient_temperature
 
 # Setting up the visualization
 fig, ax = mpl.subplots(1,1)
