@@ -2,7 +2,7 @@
 """
 Alexander Cuevas, CC3501, 2020-1
 Solves a Laplace equation in 2D with Dirichlet and Neumann
-border conditions over a square domain
+border conditions over a rectangular domain
 """
 
 import numpy as np
@@ -39,8 +39,8 @@ windows = data["windows"]
 h = 0.1
 
 # Number of unknowns
-nh = int((5 * L + 6 * W) / h) + 1
-nv = int((P + D + 2 * W) / h) + 1
+nh = int((5 * L + 4 * W) / h) + 1
+nv = int((P + D + W) / h) + 1
 
 # The domain is a rectangle
 N = nh * nv
@@ -55,11 +55,63 @@ def getIJ(k):
     j = k // nh
     return (i, j)
 
+# Transforms a measure into a valid index
+def idx(value):
+    global h
+    return int(value / h)
+
+# 0 - 1 - 2
+# 3 - 4 - 5
+# 6 - 7 - 8
+# Checks where a value is related to 2 vertical boundaries
+# and a list of 2 horizontal boundaries
+def boundary_check(i, j, xs, ys):
+    for idx in range(0, len(xs), 2):
+        if xs[idx] == i and ys[0] == j:
+            return 6
+        if xs[idx] == i and ys[0] < j < ys[1]:
+            return 3
+        if xs[idx] == i and j == ys[1]:
+            return 0
+        if xs[idx] < i < xs[idx + 1] and ys[0] == j:
+            return 7
+        if xs[idx] < i < xs[idx + 1] and ys[0] < j < ys[1]:
+            return 4
+        if xs[idx] < i < xs[idx + 1] and j == ys[1]:
+            return 1
+        if i == xs[idx + 1] and ys[0] == j:
+            return 8
+        if i == xs[idx + 1] and ys[0] < j < ys[1]:
+            return 5
+        if i == xs[idx + 1] and j == ys[1]:
+            return 2
+    return -1
+
+# Assings values to M according to the mode used
+def asign(M, k, kls, mode):
+    if mode == 4:
+        return
+    M[k, kls[0]] = 1 + int(mode == 1) - int(mode == 7)
+    M[k, kls[1]] = 1 + int(mode == 7) - int(mode == 1)
+    M[k, kls[2]] = 1 + int(mode == 3) - int(mode == 5)
+    M[k, kls[3]] = 1 + int(mode == 5) - int(mode == 3)
+    M[k, k] = -4
+
+
 # Matrix of unknown coefficients
 A = np.zeros((N, N))
 
 # Vector that contais the right side of the equations
 b = np.zeros((N,))
+
+# Constants that are used over and over in the iterarion
+parallel_xs = [0, idx(L - E), idx(L), idx(2 * L + W - E), idx(2 * L + W), idx(3 * L + 2 * W - E)]
+parallel_xs += [idx(3 * L + 2 * W), idx(4 * L + 3 * W - E), idx(4 * L + 3 * W), idx(5 * L + 4 * W - E)]
+parallel_ys = [idx(P), idx(P + W)]
+
+perpendicular_xs = [idx(L), idx(L + W), idx(2 * L + W), idx(2 * (L + W))]
+perpendicular_xs += [idx(3 * L + 2 * W), idx(3 * (L + W)), idx(4 * L + 3 * W), idx(4 * (L + W))]
+perpendicular_ys = [idx(P), nv - 1]
 
 
 # Iterating over each point inside the domain
@@ -76,40 +128,32 @@ for i in range(0, nh):
         k_down = getK(i, j - 1)
         k_left = getK(i - 1, j)
         k_right = getK(i + 1, j)
+        kls = [k_up, k_down, k_left, k_right]
 
         # Depending on the location of the point, the equation is different
         # Interior
         if 1 <= i <= nh - 2 and 1 <= j <= nv - 2:
-            A[k, k_up] = 1
-            A[k, k_down] = 1
-            A[k, k_left] = 1
-            A[k, k_right] = 1
-            A[k, k] = -4
-            b[k] = 0
+
+            # Checks if the point is in a wall parallel to the heater
+            parallel = boundary_check(i, j, parallel_xs, parallel_ys)
+            if parallel != -1:
+                asign(A, k, kls, parallel)
+            else:
+                perpendicular = boundary_check(i, j, perpendicular_xs, perpendicular_ys)
+                asign(A, k, kls, perpendicular)
         
         # Left
         elif i == 0 and 1 <= j <= nv - 2:
-            A[k, k_up] = 1
-            A[k, k_down] = 1
-            A[k, k_right] = 2
-            A[k, k] = -4
-            b[k] = 0
+            asign(A, k, kls, 5)
         
         # Right
         elif i == nh - 1 and 1 <= j <= nv - 2:
-            A[k, k_up] = 1
-            A[k, k_down] = 1
-            A[k, k_left] = 2
-            A[k, k] = -4
-            b[k] = 0
+            asign(A, k, kls, 3)
         
         # Bottom
         elif 1 <= i <= nh - 2 and j == 0:
-            A[k, k_up] = 2
-            A[k, k_left] = 1
-            A[k, k_right] = 1
-            A[k, k] = -4
-            b[k] = -2 * h * heater_power * bool(int(H1 / h) <= i <= int((H1 + H2) / h))
+            asign(A, k, kls, 1)
+            b[k] = -2 * h * heater_power * bool(idx(H1) <= i <= idx(H1 + H2))
         
         # Top
         elif 1 <= i <= nh - 2 and j == nv - 1:
@@ -117,23 +161,23 @@ for i in range(0, nh):
             A[k, k_right] = 1
             A[k, k] = -4
 
-            if int(W / h) <= i <= int((L + W) / h):
+            if 1 <= i <= idx(L):
                 A[k, k_down] = 1 + windows[0]
                 b[k] = -2 * h * window_loss if bool(windows[0]) else -ambient_temperature
             
-            elif int((L + 2 * W) / h) <= i <= int(2 * (L + W) / h):
+            elif idx(L + W) <= i <= idx(2 * L + W):
                 A[k, k_down] = 1 + windows[1]
                 b[k] = -2 * h * window_loss if bool(windows[1]) else -ambient_temperature
             
-            elif int((2 * L + 3 * W) / h) <= i <= int(3 * (L + W) / h):
+            elif idx(2 * (L + W)) <= i <= idx(3 * L + 2 * W):
                 A[k, k_down] = 1 + windows[2]
                 b[k] = -2 * h * window_loss if bool(windows[2]) else -ambient_temperature
             
-            elif int((3 * L + 4 * W) / h) <= i <= int(4 * (L + W) / h):
+            elif idx(3 * (L + W)) <= i <= idx(4 * L + 3 * W):
                 A[k, k_down] = 1 + windows[3]
                 b[k] = -2 * h * window_loss if bool(windows[3]) else -ambient_temperature
             
-            elif int((4 * L + 5 * W) / h) <= i <= int(5 * (L + W) / h):
+            elif idx(4 * (L + W)) <= i <= idx(5 * L + 4 * W):
                 A[k, k_down] = 1 + windows[4]
                 b[k] = -2 * h * window_loss if bool(windows[4]) else -ambient_temperature
 
@@ -142,14 +186,12 @@ for i in range(0, nh):
             A[k, k_up] = 2
             A[k, k_right] = 2
             A[k, k] = -4
-            b[k] = 0
 
         # Corner lower right
         elif (i, j) == (nh - 1, 0):
             A[k, k_up] = 2
             A[k, k_left] = 2
             A[k, k] = -4
-            b[k] = 0
 
         # Corner upper left
         elif (i, j) == (0, nv - 1):
@@ -183,19 +225,19 @@ for k in range(0, N):
 
 # Dirichlet boundary conditions (top side)
 if not bool(windows[0]):
-    u[int(W / h):int((L + W) / h) + 1, nv - 1] = ambient_temperature
+    u[1 : idx(L) + 1, nv - 1] = ambient_temperature
 
 if not bool(windows[1]):
-    u[int((L + 2 * W) / h):int(2 * (L + W) / h) + 1, nv - 1] = ambient_temperature
+    u[idx(L + W) : idx(2 * L + W) + 1, nv - 1] = ambient_temperature
 
 if not bool(windows[2]):
-    u[int((2 * L +  3 * W) / h):int(3 * (L + W) / h) + 1, nv - 1] = ambient_temperature
+    u[idx(2 * (L + W)) : idx(3 * L + 2 * W) + 1, nv - 1] = ambient_temperature
 
 if not bool(windows[3]):
-    u[int((3 * L + 4 * W) / h):int(4 * (L + W) / h) + 1, nv - 1] = ambient_temperature
+    u[idx(3 * (L + W)) : idx(4 * L + 3 * W) + 1, nv - 1] = ambient_temperature
 
 if not bool(windows[4]):
-    u[int((4 * L + 5 * W) / h):int(5 * (L + W) / h) + 1, nv - 1] = ambient_temperature
+    u[idx(4 * (L + W)) : idx(5 * L + 4 * W) + 1, nv - 1] = ambient_temperature
 
 # Setting up the visualization
 fig, ax = mpl.subplots(1,1)
