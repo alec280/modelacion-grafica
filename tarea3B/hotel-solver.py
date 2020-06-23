@@ -58,7 +58,7 @@ def getIJ(k):
 # Transforms a measure into a valid index
 def idx(value):
     global h
-    return int(value / h)
+    return int(value / h + 0.0001)
 
 # 0 - 1 - 2
 # 3 - 4 - 5
@@ -98,6 +98,7 @@ def asign(M, k, kls, mode):
     M[k, kls[3]] = 1 + int(mode == 5) - int(mode == 3)
     M[k, k] = -4
 
+# Sets the correct values of a window
 def set_window(M, m, k, kls, i, closed, ls):
     global window_loss
     global ambient_temperature
@@ -132,6 +133,7 @@ perpendicular_xs = [idx(L), idx(L + W), idx(2 * L + W), idx(2 * (L + W))]
 perpendicular_xs += [idx(3 * L + 2 * W), idx(3 * (L + W)), idx(4 * L + 3 * W), idx(4 * (L + W))]
 perpendicular_ys = [idx(P), nv - 1]
 
+print(perpendicular_xs)
 
 # Iterating over each point inside the domain
 # Each point has an equation associated
@@ -153,7 +155,7 @@ for i in range(0, nh):
         # Interior
         if 1 <= i <= nh - 2 and 1 <= j <= nv - 2:
 
-            # Checks if the point is in a wall parallel to the heater
+            # Checks if the point is in an interior wall
             parallel = boundary_check(i, j, parallel_xs, parallel_ys)
             if parallel > 1:
                 asign(A, k, kls, parallel)
@@ -170,7 +172,18 @@ for i in range(0, nh):
         
         # Left
         elif i == 0 and 1 <= j <= nv - 2:
-            asign(A, k, kls, 5)
+            A[k, k] = -4
+
+            if j == idx(P):
+                A[k, k_down] = 2
+                A[k, k_right] = 2
+            elif j == idx(P + W):
+                A[k, k_up] = 2
+                A[k, k_right] = 2
+            elif idx(P) < j < idx(P + W):
+                asign(A, k, kls, 4)
+            else:
+                asign(A, k, kls, 5)
         
         # Right
         elif i == nh - 1 and 1 <= j <= nv - 2:
