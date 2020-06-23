@@ -45,20 +45,46 @@ solution = np.load(solution_name)
 class Controller:
     def __init__(self):
         self.fillPolygon = True
+        self.cameraTheta = 45 * np.pi / 180
+        self.xPos = 0
+        self.yPos = 0
 
 
 # Global controller that communicates with the callback function
 controller = Controller()
 
+# Helps to control the camera by snapping it to these degrees
+SNAP_ANGLES = np.array([0, np.pi / 4, np.pi / 2, 3 * np.pi / 4, np.pi, 
+                        5 * np.pi / 4, 3 * np.pi / 2, 7 * np.pi / 4, 2 * np.pi])
+
 
 def on_key(window, key, scancode, action, mods):
 
-    if action != glfw.PRESS:
-        return
-    
     global controller
 
-    if key == glfw.KEY_SPACE:
+    # Moving the camera around, it will try to snap to certain angles
+    if key in [glfw.KEY_UP, glfw.KEY_DOWN]:
+        sign = 1 if key == glfw.KEY_UP else -1
+
+        angle = controller.cameraTheta
+        for snap in SNAP_ANGLES:
+            if abs(angle - snap) < 0.1:
+                controller.cameraTheta = snap % (2 * np.pi)
+                break
+
+        controller.xPos += 0.1 * sign * np.sin(controller.cameraTheta)
+        controller.yPos += 0.1 * sign * np.cos(controller.cameraTheta)
+    
+    elif key == glfw.KEY_RIGHT:
+        controller.cameraTheta = (controller.cameraTheta + np.pi / 90) % (2 * np.pi)
+    
+    elif key == glfw.KEY_LEFT:
+        controller.cameraTheta = (controller.cameraTheta - np.pi / 90) % (2 * np.pi)
+
+    elif action != glfw.PRESS:
+        return
+    
+    elif key == glfw.KEY_SPACE:
         controller.fillPolygon = not controller.fillPolygon
 
     elif key == glfw.KEY_ESCAPE:
@@ -164,6 +190,22 @@ def blueprint(floor = False):
     return bs.Shape(vertices, indices)
 
 
+# Moves the camera in a cylindrical system,
+# returns the view matrix and the viewPos vector for later use
+def moveCamera():
+
+    theta = controller.cameraTheta
+
+    # Where to look
+    atX = controller.xPos + np.sin(theta)
+    atY = controller.yPos + np.cos(theta)
+
+    viewPos = np.array([controller.xPos, controller.yPos, 0.5])
+    viewUp = np.array([0, 0, 1])
+
+    return tr.lookAt(viewPos, np.array([atX, atY, 0.5]), viewUp), viewPos
+
+
 # Main function
 if __name__ == "__main__":
 
@@ -206,34 +248,15 @@ if __name__ == "__main__":
     t0 = glfw.get_time()
     camera_theta = -3*np.pi/4
 
+    # Setting up the projection
+    projection = tr.perspective(60, float(width) / float(height), 0.1, 100)
+
     while not glfw.window_should_close(window):
         # Using GLFW to check for input events
         glfw.poll_events()
 
-        # Getting the time difference from the previous iteration
-        t1 = glfw.get_time()
-        dt = t1 - t0
-        t0 = t1
-
-        if (glfw.get_key(window, glfw.KEY_LEFT) == glfw.PRESS):
-            camera_theta -= 2 * dt
-
-        if (glfw.get_key(window, glfw.KEY_RIGHT) == glfw.PRESS):
-            camera_theta += 2* dt
-
-        # Setting up the view transform
-        R = 12
-        camX = R * np.sin(camera_theta)
-        camY = R * np.cos(camera_theta)
-        viewPos = np.array([camX, camY, 7])
-        view = tr.lookAt(
-            viewPos,
-            np.array([0,0,1]),
-            np.array([0,0,1])
-        )
-
-        # Setting up the projection transform
-        projection = tr.perspective(60, float(width)/float(height), 0.1, 100)
+        # Moving the camera
+        view, viewPos = moveCamera()
 
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -244,7 +267,7 @@ if __name__ == "__main__":
         else:
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
 
-        # Drawing shapes
+        # Using the lighting shader program
         glUseProgram(pipeline.shaderProgram)
         glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "La"), 1.0, 1.0, 1.0)
         glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ld"), 1.0, 1.0, 1.0)
@@ -265,6 +288,7 @@ if __name__ == "__main__":
         glUniformMatrix4fv(glGetUniformLocation(pipeline.shaderProgram, "view"), 1, GL_TRUE, view)
         glUniformMatrix4fv(glGetUniformLocation(pipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
 
+        # Drawing the shapes
         pipeline.drawShape(gpuRoof)
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
