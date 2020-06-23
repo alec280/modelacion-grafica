@@ -16,7 +16,9 @@ if len(sys.argv) <= 1:
     print("Invalid setup data.")
     sys.exit()
 
-with open(sys.argv[1]) as j:
+name = sys.argv[1]
+
+with open(name) as j:
     data = json.load(j)
 
 # Problem setup
@@ -132,8 +134,6 @@ parallel_ys = [idx(P), idx(P + W)]
 perpendicular_xs = [idx(L), idx(L + W), idx(2 * L + W), idx(2 * (L + W))]
 perpendicular_xs += [idx(3 * L + 2 * W), idx(3 * (L + W)), idx(4 * L + 3 * W), idx(4 * (L + W))]
 perpendicular_ys = [idx(P), nv - 1]
-
-print(perpendicular_xs)
 
 # Iterating over each point inside the domain
 # Each point has an equation associated
@@ -271,13 +271,18 @@ for k in range(0, N):
     i, j = getIJ(k)
     u[i, j] = x[k]
 
-# Setting up the visualization
-fig, ax = mpl.subplots(1,1)
-pcm = ax.pcolormesh(u.T, cmap='RdBu_r')
-fig.colorbar(pcm)
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_title('Laplace equation solution.\n Neumann Condition at the right side.')
-ax.set_aspect('equal', 'datalim')
+# Setting up the visualization (optional)
+if False:
+    fig, ax = mpl.subplots(1,1)
+    pcm = ax.pcolormesh(u.T, cmap='RdBu_r')
+    fig.colorbar(pcm)
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('Laplace equation solution.')
+    ax.set_aspect('equal', 'datalim')
 
-mpl.show()
+    mpl.show()
+
+# Saving the matrix
+with open(name[:name.index(".")] + '_solution.npy', 'wb') as solution:
+    np.save(solution, u)
