@@ -262,6 +262,7 @@ for i in range(0, nh):
 
 
 # Solving the system
+print("Solving the problem...")
 x = np.linalg.solve(A, b)
 
 # Solution in the 2d discrete domain
@@ -284,5 +285,8 @@ if False:
     mpl.show()
 
 # Saving the matrix
-with open(name[:name.index(".")] + '_solution.npy', 'wb') as solution:
+solution_name = name[:name.index(".")] + '_solution.npy'
+with open(solution_name, 'wb') as solution:
     np.save(solution, u)
+
+print("Problem solved, solution stored in: " + solution_name)
