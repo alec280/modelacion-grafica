@@ -17,6 +17,9 @@ import easy_shaders as es
 import scene_graph as sg
 import lighting_shaders as ls
 
+# Import that helps to get the contours
+import matplotlib.pyplot as mpl
+
 
 # Loads a .json file that setups the problem
 if len(sys.argv) <= 1:
@@ -33,9 +36,9 @@ solution_name = name[:name.index(".")] + '_solution.npy'
 
 try:
     with open(solution_name) as s:
-        print("Loading solution...")
+        print('\n' + "Loading solution...", end = ' ')
 except:
-    print("Solution not found.")
+    print('\n' + "Solution not found.")
     sys.exit()
 
 solution = np.load(solution_name)
@@ -50,10 +53,11 @@ midval = (maxval + minval) / 2
 # Class that stores the application control
 class Controller:
     def __init__(self):
-        self.fillPolygon = True
         self.cameraTheta = 45 * np.pi / 180
         self.xPos = data["L"] / 2
         self.yPos = data["P"] / 2
+        self.curves = False
+        self.arrows = False
 
 
 # Global controller that communicates with the callback function
@@ -65,6 +69,7 @@ SNAP_ANGLES = np.array([0, np.pi / 4, np.pi / 2, 3 * np.pi / 4, np.pi,
                         5 * np.pi / 4, 3 * np.pi / 2, 7 * np.pi / 4, 2 * np.pi])
 
 
+# Handles the interaction with the user
 def on_key(window, key, scancode, action, mods):
 
     global controller
@@ -104,7 +109,11 @@ def on_key(window, key, scancode, action, mods):
         return
     
     elif key == glfw.KEY_SPACE:
-        controller.fillPolygon = not controller.fillPolygon
+        controller.curves = not controller.curves
+    
+    elif key == glfw.KEY_RIGHT_CONTROL:
+        controller.arrows = not controller.arrows
+        print("hi")
 
     elif key == glfw.KEY_ESCAPE:
         sys.exit()
@@ -113,17 +122,26 @@ def on_key(window, key, scancode, action, mods):
 # Colorates the heat map with 3 colors
 def colorMap(i, j):
 
-    # Getting the temperature
-    x = min(int(i / 0.1 + 0.0001), shapeSol[0] - 1)
-    y = min(int(j / 0.1 + 0.0001), shapeSol[1] - 1)
-    temperature = solution[x, y]
+    # Precision of the solution
+    h = 0.1
 
+    # Getting the temperature
+    x = min(int(i / h + 0.0001), shapeSol[0] - 1)
+    y = min(int(j / h + 0.0001), shapeSol[1] - 1)
+
+    return colorAux(solution[x, y])
+
+
+# Returns the appropiate color for a temperature
+def colorAux(temperature):
     colorMin = np.array([0, 0, 1])
-    colorMid = np.array([1, 1, 0])
+    colorMid = np.array([1, 1, 1])
     colorMax = np.array([1, 0, 0])
 
     # Assigning the colors
-    if minval <= temperature <= midval:
+    if temperature <= minval:
+        return list(colorMin)
+    elif minval < temperature < midval:
         ratio = (temperature - minval) / (midval - minval)
         return list(colorMin * (1 - ratio) + colorMid * ratio)
     else:
@@ -189,8 +207,8 @@ def createFloor():
     global data
 
     # Generate a terrain with many samples between the limits of the map
-    xs = np.ogrid[0:5 * data["L"] + 4 * data["W"]:160j]
-    ys = np.ogrid[0:data["P"] + data["W"] + data["D"]:160j]
+    xs = np.ogrid[0:5 * data["L"] + 4 * data["W"]:np.complex(shapeSol[0], 1)]
+    ys = np.ogrid[0:data["P"] + data["W"] + data["D"]:np.complex(shapeSol[1], 1)]
 
     xSize = len(xs)
     ySize = len(ys)
@@ -224,8 +242,7 @@ def createFloor():
             # Adding this cell's quad as 2 triangles
             indices += [
                 isw, ise, ine,
-                ine, inw, isw
-            ]
+                ine, inw, isw]
 
     return bs.Shape(vertices, indices)
 
@@ -235,25 +252,41 @@ def createRoof():
 
     # Defining the location and colors of each vertex of the shape
     vertices = []
-    for vertex in keyPoints():
+
+    pts = keyPoints()
+    for vertex in [pts[0], pts[3], pts[24], pts[33]]:
         vertices += vertex + [0.75, 0.75, 0.75] + [0, 0, -1]
 
     # Defining connections among vertices
-    indices = [
-           0,  5,  4,  0,  1,  5,  5,  1,  6,  6,  1,  7,
-           7,  1,  8,  8,  1,  9,  9,  1, 10, 10,  1,  2,
-          10, 11,  2, 11,  2, 12, 12,  2, 13, 13,  2,  3,
-          13,  3, 33, 32, 23, 33, 32, 22, 23, 13, 33, 23,
-          21, 11, 12, 21, 12, 31, 30, 21, 31, 30, 20, 21,
-           9, 10, 19, 19, 10, 29, 28, 19, 29, 28, 18, 19,
-           7,  8, 17, 17,  8, 27, 26, 17, 27, 26, 16, 17,
-           5,  6, 15, 15,  6, 25, 24, 15, 25, 24, 14, 15]
+    indices = [2, 0, 1, 2, 1, 3]
+
+    return bs.Shape(vertices, indices)
+
+
+# Shape of a curve
+def createCurve(curve, level):
+
+    z = (level - minval) / (maxval - minval)
+    color = list((np.array(colorAux(level)) + np.array([1, 1, 1])) * 0.5)
+
+    # Defining the location and colors of each vertex of the shape
+    vertices = []
+
+    # This shape is meant to be drawn with GL_LINES
+    indices = []
+
+    for i, pos in enumerate(curve):
+        vertices += [pos[0] * 0.1, pos[1] * 0.1, z] + color
+        indices += [i, i + 1]
+
+    indices.pop()
 
     return bs.Shape(vertices, indices)
 
 
 # Shape of the walls
 def createWalls():
+    global data
 
     # Defining the location and colors of each vertex of the shape
     vertices = []
@@ -264,96 +297,61 @@ def createWalls():
     hpts = list(map(lambda x: [x[0], x[1], 1], pts.copy()))
 
     # Drawing the walls
-    vertices += pts[0] + color + [0, 1, 0] + hpts[0] + color + [0, 1, 0]
-    vertices += pts[1] + color + [0, 1, 0] + hpts[1] + color + [0, 1, 0]
-    vertices += pts[2] + color + [0, 1, 0] + hpts[2] + color + [0, 1, 0]
-    vertices += pts[3] + color + [0, 1, 0] + hpts[3] + color + [0, 1, 0]
+    # Drawing the bottom walls
+    for i in range(0, 4):
+        vertices += pts[i] + color + [0, 1, 0] + hpts[i] + color + [0, 1, 0]
+
+    # Unorganized group of walls
     vertices += pts[0] + color + [1, 0, 0] + hpts[0] + color + [1, 0, 0]
     vertices += pts[4] + color + [1, 0, 0] + hpts[4] + color + [1, 0, 0]
     vertices += pts[3] + color + [-1, 0, 0] + hpts[3] + color + [-1, 0, 0]
     vertices += pts[33] + color + [-1, 0, 0] + hpts[33] + color + [-1, 0, 0]
     vertices += pts[14] + color + [1, 0, 0] + hpts[14] + color + [1, 0, 0]
     vertices += pts[24] + color + [1, 0, 0] + hpts[24] + color + [1, 0, 0]
-    vertices += pts[6] + color + [-1, 0, 0] + hpts[6] + color + [-1, 0, 0]
-    vertices += pts[25] + color + [-1, 0, 0] + hpts[25] + color + [-1, 0, 0]
-    vertices += pts[8] + color + [-1, 0, 0] + hpts[8] + color + [-1, 0, 0]
-    vertices += pts[27] + color + [-1, 0, 0] + hpts[27] + color + [-1, 0, 0]
-    vertices += pts[10] + color + [-1, 0, 0] + hpts[10] + color + [-1, 0, 0]
-    vertices += pts[29] + color + [-1, 0, 0] + hpts[29] + color + [-1, 0, 0]
-    vertices += pts[12] + color + [-1, 0, 0] + hpts[12] + color + [-1, 0, 0]
-    vertices += pts[31] + color + [-1, 0, 0] + hpts[31] + color + [-1, 0, 0]
-    vertices += pts[16] + color + [1, 0, 0] + hpts[16] + color + [1, 0, 0]
-    vertices += pts[26] + color + [1, 0, 0] + hpts[26] + color + [1, 0, 0]
-    vertices += pts[18] + color + [1, 0, 0] + hpts[18] + color + [1, 0, 0]
-    vertices += pts[28] + color + [1, 0, 0] + hpts[28] + color + [1, 0, 0]
-    vertices += pts[20] + color + [1, 0, 0] + hpts[20] + color + [1, 0, 0]
-    vertices += pts[30] + color + [1, 0, 0] + hpts[30] + color + [1, 0, 0]
-    vertices += pts[22] + color + [1, 0, 0] + hpts[22] + color + [1, 0, 0]
-    vertices += pts[32] + color + [1, 0, 0] + hpts[32] + color + [1, 0, 0]
-    vertices += pts[4] + color + [0, -1, 0] + hpts[4] + color + [0, -1, 0]
-    vertices += pts[5] + color + [0, -1, 0] + hpts[5] + color + [0, -1, 0]
-    vertices += pts[6] + color + [0, -1, 0] + hpts[6] + color + [0, -1, 0]
-    vertices += pts[7] + color + [0, -1, 0] + hpts[7] + color + [0, -1, 0]
-    vertices += pts[8] + color + [0, -1, 0] + hpts[8] + color + [0, -1, 0]
-    vertices += pts[9] + color + [0, -1, 0] + hpts[9] + color + [0, -1, 0]
-    vertices += pts[10] + color + [0, -1, 0] + hpts[10] + color + [0, -1, 0]
-    vertices += pts[11] + color + [0, -1, 0] + hpts[11] + color + [0, -1, 0]
-    vertices += pts[12] + color + [0, -1, 0] + hpts[12] + color + [0, -1, 0]
-    vertices += pts[13] + color + [0, -1, 0] + hpts[13] + color + [0, -1, 0]
-    vertices += pts[14] + color + [0, 1, 0] + hpts[14] + color + [0, 1, 0]
-    vertices += pts[15] + color + [0, 1, 0] + hpts[15] + color + [0, 1, 0]
-    vertices += pts[16] + color + [0, 1, 0] + hpts[16] + color + [0, 1, 0]
-    vertices += pts[17] + color + [0, 1, 0] + hpts[17] + color + [0, 1, 0]
-    vertices += pts[18] + color + [0, 1, 0] + hpts[18] + color + [0, 1, 0]
-    vertices += pts[19] + color + [0, 1, 0] + hpts[19] + color + [0, 1, 0]
-    vertices += pts[20] + color + [0, 1, 0] + hpts[20] + color + [0, 1, 0]
-    vertices += pts[21] + color + [0, 1, 0] + hpts[21] + color + [0, 1, 0]
-    vertices += pts[22] + color + [0, 1, 0] + hpts[22] + color + [0, 1, 0]
-    vertices += pts[23] + color + [0, 1, 0] + hpts[23] + color + [0, 1, 0]
-    vertices += pts[5] + color + [1, 0, 0] + hpts[5] + color + [1, 0, 0]
-    vertices += pts[15] + color + [1, 0, 0] + hpts[15] + color + [1, 0, 0]
-    vertices += pts[7] + color + [1, 0, 0] + hpts[7] + color + [1, 0, 0]
-    vertices += pts[17] + color + [1, 0, 0] + hpts[17] + color + [1, 0, 0]
-    vertices += pts[9] + color + [1, 0, 0] + hpts[9] + color + [1, 0, 0]
-    vertices += pts[19] + color + [1, 0, 0] + hpts[19] + color + [1, 0, 0]
-    vertices += pts[11] + color + [1, 0, 0] + hpts[11] + color + [1, 0, 0]
-    vertices += pts[21] + color + [1, 0, 0] + hpts[21] + color + [1, 0, 0]
-    vertices += pts[13] + color + [1, 0, 0] + hpts[13] + color + [1, 0, 0]
-    vertices += pts[23] + color + [1, 0, 0] + hpts[23] + color + [1, 0, 0]
+
+    # Drawing the walls perpendicual to the heater (big)
+    for i in range(6, 14, 2):
+        vertices += pts[i] + color + [-1, 0, 0] + hpts[i] + color + [-1, 0, 0]
+        vertices += pts[i + 19] + color + [-1, 0, 0] + hpts[i + 19] + color + [-1, 0, 0]
+
+    for i in range(16, 24, 2):
+        vertices += pts[i] + color + [1, 0, 0] + hpts[i] + color + [1, 0, 0]
+        vertices += pts[i + 10] + color + [1, 0, 0] + hpts[i + 10] + color + [1, 0, 0]
+
+    # Drawing the walls parallel to the heater
+    for i in range(4, 14):
+        vertices += pts[i] + color + [0, -1, 0] + hpts[i] + color + [0, -1, 0]
+    
+    for i in range(14, 24):
+        vertices += pts[i] + color + [0, 1, 0] + hpts[i] + color + [0, 1, 0]
+
+    # Drawing the walls perpendicual to the heater (small)
+    for i in range(5, 15, 2):
+        vertices += pts[i] + color + [1, 0, 0] + hpts[i] + color + [1, 0, 0]
+        vertices += pts[i + 10] + color + [1, 0, 0] + hpts[i + 10] + color + [1, 0, 0]
 
     # Drawing the heater
-    vertices += pts[1] + [1, 0, 0] + [0, 1, 0] + hpts[1] + [1, 0, 0] + [0, 1, 0]
-    vertices += pts[2] + [1, 0, 0] + [0, 1, 0] + hpts[2] + [1, 0, 0] + [0, 1, 0]
+    for i in range(1, 3):
+        vertices += pts[i] + [1, 0, 0] + [0, 1, 0] + hpts[i] + [1, 0, 0] + [0, 1, 0]
 
     # Drawing the bottom of the windows
-    vertices += pts[24] + color + [0, -1, 0] + hpts[24][:2] + [0.3] + color + [0, -1, 0]
-    vertices += pts[25] + color + [0, -1, 0] + hpts[25][:2] + [0.3]  + color + [0, -1, 0]
-    vertices += pts[26] + color + [0, -1, 0] + hpts[26][:2] + [0.3] + color + [0, -1, 0]
-    vertices += pts[27] + color + [0, -1, 0] + hpts[27][:2] + [0.3]  + color + [0, -1, 0]
-    vertices += pts[28] + color + [0, -1, 0] + hpts[28][:2] + [0.3] + color + [0, -1, 0]
-    vertices += pts[29] + color + [0, -1, 0] + hpts[29][:2] + [0.3]  + color + [0, -1, 0]
-    vertices += pts[30] + color + [0, -1, 0] + hpts[30][:2] + [0.3] + color + [0, -1, 0]
-    vertices += pts[31] + color + [0, -1, 0] + hpts[31][:2] + [0.3]  + color + [0, -1, 0]
-    vertices += pts[32] + color + [0, -1, 0] + hpts[32][:2] + [0.3] + color + [0, -1, 0]
-    vertices += pts[33] + color + [0, -1, 0] + hpts[33][:2] + [0.3]  + color + [0, -1, 0]
+    for i in range(24, 34):
+        vertices += pts[i] + color + [0, -1, 0] + hpts[i][:2] + [0.3] + color + [0, -1, 0]
+
+    # Drawing the open or closed windows
+    windows = data["windows"]
+    glass_colors = [[0.5, 0.5, 1], [1, 1, 0]]
+
+    for i, j in enumerate(range(24, 34)):
+        glass = glass_colors[windows[i // 2]]
+        vertices += pts[j][:2] + [0.3] + glass + [0, 1, 0] + hpts[j] + glass + [0, 1, 0]
 
     # Defining connections among vertices
-    indices = [
-           0,  1,  2,  1,  3,  2,  4,  5,  6,  5,  7,  6,  8, 10,  9,
-          10,  9, 11, 13, 14, 12, 13, 15, 14, 16, 18, 17, 17, 18, 19,
-          21, 22, 20, 21, 23, 22, 25, 26, 24, 25, 27, 26, 29, 30, 28,
-          29, 31, 30, 33, 34, 32, 33, 35, 34, 36, 38, 37, 37, 38, 39,
-          40, 42, 41, 41, 42, 43, 44, 46, 45, 45, 46, 47, 48, 50, 49,
-          49, 50, 51, 52, 54, 53, 53, 54, 55, 56, 58, 57, 57, 58, 59,
-          60, 62, 61, 61, 62, 63, 64, 66, 65, 65, 66, 67, 68, 70, 69,
-          69, 70, 71, 75, 74, 72, 75, 72, 73, 79, 78, 76, 79, 76, 77,
-          83, 82, 80, 83, 80, 81, 87, 86, 84, 87, 84, 85, 91, 90, 88,
-          91, 88, 89, 93, 92, 94, 93, 94, 95, 97, 96, 98, 97, 98, 99,
-         101,100,102,101,102,103,105,104,106,105,106,107,109,108,110,
-         109,110,111,112,113,114,113,115,114,117,116,118,117,118,119,
-         121,120,122,121,122,123,125,124,126,125,126,127,129,128,130,
-         129,130,131,133,132,134,133,134,135,
-    ]
+    indices = []
+
+    for i in range(0, 156, 4):
+        indices += [i + 1, i, i + 2, i + 1, i + 2, i + 3]
+
     return bs.Shape(vertices, indices)
 
 
@@ -373,6 +371,26 @@ def moveCamera():
     return tr.lookAt(viewPos, np.array([atX, atY, 0.5]), viewUp), viewPos
 
 
+# Get the contours from matplotlib
+def get_contour_verts(cn):
+    contours = []
+
+    # For each contour line
+    for cc in cn.collections:
+        paths = []
+
+        # For each separate section of the contour line
+        for pp in cc.get_paths():
+            xy = []
+            # for each segment of that section
+            for vv in pp.iter_segments():
+                xy.append(vv[0])
+            paths.append(np.vstack(xy))
+        contours.append(paths)
+
+    return contours
+
+
 # Main function
 if __name__ == "__main__":
 
@@ -383,7 +401,7 @@ if __name__ == "__main__":
     width = 600
     height = 600
 
-    window = glfw.create_window(width, height, "Heat map inside a Hotel.", None, None)
+    window = glfw.create_window(width, height, "Heat map inside Don Pedro's hotel.", None, None)
 
     if not window:
         glfw.terminate()
@@ -396,8 +414,8 @@ if __name__ == "__main__":
 
     # Defining shader programs
     #pipeline = ls.SimpleFlatShaderProgram()
-    pipeline = ls.SimpleGouraudShaderProgram()
-    #pipeline = ls.SimplePhongShaderProgram()
+    #pipeline = ls.SimpleGouraudShaderProgram()
+    pipeline = ls.SimplePhongShaderProgram()
     simplePipeline = es.SimpleModelViewProjectionShaderProgram()
 
     glUseProgram(pipeline.shaderProgram)
@@ -408,6 +426,16 @@ if __name__ == "__main__":
     # As we work in 3D, we need to check which part is in front,
     # and which one is at the back
     glEnable(GL_DEPTH_TEST)
+
+    # Filling the shapes
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+
+    # Getting the contours
+    x, y = np.mgrid[:shapeSol[0], :shapeSol[1]]
+    cnt = mpl.contour(x, y, solution, 12)
+
+    cnt_list = get_contour_verts(cnt)[1:11]
+    cnt_levels = cnt.levels[1:11]
 
     # Creating the graphs
     roofGraph = sg.SceneGraphNode("roof")
@@ -420,14 +448,22 @@ if __name__ == "__main__":
     wallGraph = sg.SceneGraphNode("wall")
     wallGraph.childs += [es.toGPUShape(createWalls())]
 
+    curvesGpu = []
+    for contour, level in zip(cnt_list, cnt_levels):
+        curvesGpu.append(es.toGPUShape(createCurve(contour[0], level)))
+
     # Setting up the projection
     projection = tr.perspective(60, float(width) / float(height), 0.1, 100)
 
     # Light position
-    lgX = 1.5 * data["L"] + data["W"]
-    lgY = 1.5 * (data["P"] + data["W"] + data["D"])
+    lgX = 2.5 * data["L"] + 2 * data["W"]
+    lgY = 2 * (data["P"] + data["W"] + data["D"])
 
-    print("You can move with the arrow keys.")
+    print("Solution loaded." + '\n')
+    print("Minimum value (Blue):", "{:.2f}".format(minval))
+    print("Intermediate value (White):", "{:.2f}".format(midval))
+    print("Maximum value (Red):", "{:.2f}".format(maxval), '\n')
+    print("You can move with the arrow keys." + '\n')
 
     while not glfw.window_should_close(window):
         # Using GLFW to check for input events
@@ -439,18 +475,17 @@ if __name__ == "__main__":
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        # Filling or not the shapes depending on the controller state
-        if (controller.fillPolygon):
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
-        else:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-        
-        # The floow is drawn without light effects
+        # The floor and curves are drawn without light effects
         glUseProgram(simplePipeline.shaderProgram)
         glUniformMatrix4fv(glGetUniformLocation(simplePipeline.shaderProgram, "projection"), 1, GL_TRUE, projection)
         glUniformMatrix4fv(glGetUniformLocation(simplePipeline.shaderProgram, "view"), 1, GL_TRUE, view)
         glUniformMatrix4fv(glGetUniformLocation(simplePipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
         sg.drawSceneGraphNode(floorGraph, simplePipeline, "model")
+
+        # Drawing the curves
+        if controller.curves:
+            for curve in curvesGpu:
+                simplePipeline.drawShape(curve, GL_LINES)
 
         # Using the lighting shader program
         glUseProgram(pipeline.shaderProgram)

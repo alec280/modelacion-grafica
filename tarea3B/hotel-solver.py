@@ -10,6 +10,10 @@ import matplotlib.pyplot as mpl
 import json
 import sys
 
+# Imports from scipy in order to use a sparse matrix
+from scipy.sparse import csc_matrix
+from scipy.sparse.linalg import spsolve
+
 
 # Loads a .json file that setups the problem
 if len(sys.argv) <= 1:
@@ -263,7 +267,7 @@ for i in range(0, nh):
 
 # Solving the system
 print("Solving the problem...")
-x = np.linalg.solve(A, b)
+x = spsolve(csc_matrix(A), b)
 
 # Solution in the 2d discrete domain
 u = np.zeros((nh, nv))
