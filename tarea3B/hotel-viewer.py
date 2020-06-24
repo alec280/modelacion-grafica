@@ -44,6 +44,9 @@ except:
 solution = np.load(solution_name)
 shapeSol = solution.shape
 
+# Precision of the solution
+PRECISION = 0.1
+
 # Checks minimal and maximal values for the heat map
 minval = np.min(solution[np.nonzero(solution)])
 maxval = np.max(solution)
@@ -113,7 +116,6 @@ def on_key(window, key, scancode, action, mods):
     
     elif key == glfw.KEY_RIGHT_CONTROL:
         controller.arrows = not controller.arrows
-        print("hi")
 
     elif key == glfw.KEY_ESCAPE:
         sys.exit()
@@ -122,12 +124,9 @@ def on_key(window, key, scancode, action, mods):
 # Colorates the heat map with 3 colors
 def colorMap(i, j):
 
-    # Precision of the solution
-    h = 0.1
-
     # Getting the temperature
-    x = min(int(i / h + 0.0001), shapeSol[0] - 1)
-    y = min(int(j / h + 0.0001), shapeSol[1] - 1)
+    x = min(int(i / PRECISION + 0.0001), shapeSol[0] - 1)
+    y = min(int(j / PRECISION + 0.0001), shapeSol[1] - 1)
 
     return colorAux(solution[x, y])
 
@@ -276,10 +275,67 @@ def createCurve(curve, level):
     indices = []
 
     for i, pos in enumerate(curve):
-        vertices += [pos[0] * 0.1, pos[1] * 0.1, z] + color
+        vertices += [pos[0] * PRECISION, pos[1] * PRECISION, z] + color
         indices += [i, i + 1]
 
     indices.pop()
+
+    return bs.Shape(vertices, indices)
+
+
+# Calculate the gradient of a point
+def calculateGradient(i, j):
+
+    zUp = solution[i - 1, j] if i > 0 else solution[i, j]
+    zDown = solution[i + 1, j] if i < shapeSol[0] - 1 else solution[i, j]
+    zLeft = solution[i, j - 1] if j > 0 else solution[i, j]
+    zRight = solution[i, j + 1] if j < shapeSol[1] - 1 else solution[i, j]
+
+    # Calculating the derivatives by approximation
+    x = (zDown - zUp) / (2 * PRECISION)
+    y = (zRight - zLeft) / (2 * PRECISION)
+
+    # Returns the vertex value (normalized) and its magnitude
+    vertex = np.array([x, y, 0.0])
+    normalized = vertex / np.linalg.norm(vertex)
+
+    magnitude = min(1, np.sqrt(x**2 + y**2))
+
+    return (normalized, magnitude)
+
+
+# Shape of the arrow map
+def createArrowMap():
+
+    # Defining the location and colors of each vertex of the shape
+    vertices = []
+
+    # This shape is meant to be drawn with GL_LINES
+    indices = []
+
+    for i in range(shapeSol[0]):
+        for j in range(shapeSol[1]):
+            k = j + i * shapeSol[0]
+
+            color = [0, 0, 0]
+
+            # Getting the gradient
+            gradient, magnitude = calculateGradient(i, j)
+            vertex = np.array([i * PRECISION, j * PRECISION, 0.05])
+            end_point = vertex + 0.07 * magnitude * gradient
+
+            middle = (vertex + end_point) / 2
+
+            # Creating the arrowhead
+            perpendicular = np.cross(end_point - vertex, [0, 0, 1])
+            perpendicular /= np.linalg.norm(perpendicular)
+
+            # Adding the arrow
+            vertices += list(vertex) + color + list(end_point) + color
+            vertices += list(middle + 0.02 * magnitude * perpendicular) + color
+            vertices += list(middle - 0.02 * magnitude * perpendicular) + color
+
+            indices += [4 * k, 4 * k + 1, 4 * k + 1, 4 * k + 2, 4 * k + 1, 4 * k + 3]
 
     return bs.Shape(vertices, indices)
 
@@ -451,6 +507,8 @@ if __name__ == "__main__":
     curvesGpu = []
     for contour, level in zip(cnt_list, cnt_levels):
         curvesGpu.append(es.toGPUShape(createCurve(contour[0], level)))
+    
+    arrowGpu = es.toGPUShape(createArrowMap())
 
     # Setting up the projection
     projection = tr.perspective(60, float(width) / float(height), 0.1, 100)
@@ -486,6 +544,10 @@ if __name__ == "__main__":
         if controller.curves:
             for curve in curvesGpu:
                 simplePipeline.drawShape(curve, GL_LINES)
+        
+        # Drawing the arrows
+        if controller.arrows:
+            simplePipeline.drawShape(arrowGpu, GL_LINES)
 
         # Using the lighting shader program
         glUseProgram(pipeline.shaderProgram)
