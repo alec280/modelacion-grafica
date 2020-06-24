@@ -46,8 +46,8 @@ class Controller:
     def __init__(self):
         self.fillPolygon = True
         self.cameraTheta = 45 * np.pi / 180
-        self.xPos = 0
-        self.yPos = 0
+        self.xPos = data["L"] / 2
+        self.yPos = data["P"] / 2
 
 
 # Global controller that communicates with the callback function
@@ -61,6 +61,7 @@ SNAP_ANGLES = np.array([0, np.pi / 4, np.pi / 2, 3 * np.pi / 4, np.pi,
 def on_key(window, key, scancode, action, mods):
 
     global controller
+    global data
 
     # Moving the camera around, it will try to snap to certain angles
     if key in [glfw.KEY_UP, glfw.KEY_DOWN]:
@@ -74,6 +75,17 @@ def on_key(window, key, scancode, action, mods):
 
         controller.xPos += 0.1 * sign * np.sin(controller.cameraTheta)
         controller.yPos += 0.1 * sign * np.cos(controller.cameraTheta)
+
+        # Limits the movement to the interior of the hotel
+        if controller.xPos < 0:
+            controller.xPos = 0
+        elif controller.xPos > 5 * data["L"] + 4 * data["W"]:
+            controller.xPos = 5 * data["L"] + 4 * data["W"]
+        
+        if controller.yPos < 0:
+            controller.yPos = 0
+        elif controller.yPos > data["P"] + data["W"] + data["D"]:
+            controller.yPos = data["P"] + data["W"] + data["D"]
     
     elif key == glfw.KEY_RIGHT:
         controller.cameraTheta = (controller.cameraTheta + np.pi / 90) % (2 * np.pi)
@@ -91,18 +103,17 @@ def on_key(window, key, scancode, action, mods):
         sys.exit()
 
 
-# Colorates the heat map with 3 colors.
+# Colorates the heat map with 3 colors
 def colorMap(value, active):
     if not active:
-        return [0, 0, 0]
+        return [0.75, 0.75, 0.75]
+    return [0, 0, 0]
 
 
-# Shape of the floor and roof
-def blueprint(floor = False):
+# Returns a list of the key points of the geometry
+def keyPoints():
     global data
 
-    normal = [0, 0, 1] if floor else [0, 0, -1]
-    
     # Geometry of the problem
     P = data["P"]
     L = data["L"]
@@ -111,13 +122,12 @@ def blueprint(floor = False):
     E = data["E"]
     H1 = data["H1"]
     H2 = data["H2"]
-
-    # Defining the location and colors of each vertex  of the shape
-    vertices = []
-    for vertex in [
+    
+    # List of points
+    pts = [
         [0, 0, 0], #0
         [H1, 0, 0],
-        [H2, 0, 0], 
+        [H1 + H2, 0, 0], 
         [5 * L + 4 * W, 0, 0], 
         [0, P, 0], 
         [L - E, P, 0], #5
@@ -148,44 +158,220 @@ def blueprint(floor = False):
         [3 * (L + W), P + W + D, 0], #30
         [4 * L + 3 * W, P + W + D, 0], 
         [4 * (L + W), P + W + D, 0],
-        [5 * L + 4 * W, P + W + D, 0]
-    ]:
+        [5 * L + 4 * W, P + W + D, 0]]
+    
+    return pts
+
+
+# Shape of the floor and roof
+def blueprint(floor = False):
+    global data
+
+    normal = [0, 0, 1] if floor else [0, 0, -1]
+    
+    # Defining the location and colors of each vertex of the shape
+    vertices = []
+    for vertex in keyPoints():
         vertices += vertex + colorMap(vertex, floor) + normal 
 
     # Defining connections among vertices
     indices = [
-           0,  5,  4, 
-           0,  1,  5,
-           5,  1,  6,
-           6,  1,  7,
-           7,  1,  8,
-           8,  1,  9,
-           9,  1, 10,
-          10,  1,  2,
-          10, 11,  2,
-          11,  2, 12,
-          12,  2, 13,
-          13,  2,  3,
-          13,  3, 33,
-          32, 23, 33,
-          32, 22, 23,
-          13, 33, 23,
-          21, 11, 12,
-          21, 12, 31,
-          30, 21, 31,
-          30, 20, 21,
-           9, 10, 19,
-          19, 10, 29,
-          28, 19, 29,
-          28, 18, 19,
-           7,  8, 17,
-          17,  8, 27,
-          26, 17, 27,
-          26, 16, 17,
-           5,  6, 15,
-          15,  6, 25,
-          24, 15, 25,
-          24, 14, 15,
+           0,  5,  4,  0,  1,  5,  5,  1,  6,  6,  1,  7,
+           7,  1,  8,  8,  1,  9,  9,  1, 10, 10,  1,  2,
+          10, 11,  2, 11,  2, 12, 12,  2, 13, 13,  2,  3,
+          13,  3, 33, 32, 23, 33, 32, 22, 23, 13, 33, 23,
+          21, 11, 12, 21, 12, 31, 30, 21, 31, 30, 20, 21,
+           9, 10, 19, 19, 10, 29, 28, 19, 29, 28, 18, 19,
+           7,  8, 17, 17,  8, 27, 26, 17, 27, 26, 16, 17,
+           5,  6, 15, 15,  6, 25, 24, 15, 25, 24, 14, 15]
+
+    return bs.Shape(vertices, indices)
+
+
+# Shape of the walls
+def createWalls():
+    global data
+
+    color = [0.75, 0.75, 0.75]
+
+    # Defining the location and colors of each vertex  of the shape
+    pts = keyPoints()
+    hpts = list(map(lambda x: [x[0], x[1], 1], pts.copy()))
+
+    vertices = []
+    vertices += pts[0] + color + [0, 1, 0]  #0
+    vertices += hpts[0] + color + [0, 1, 0]
+    vertices += pts[1] + color + [0, 1, 0]
+    vertices += hpts[1] + color + [0, 1, 0]
+    vertices += pts[2] + color + [0, 1, 0]
+    vertices += hpts[2] + color + [0, 1, 0]  #5
+    vertices += pts[3] + color + [0, 1, 0]
+    vertices += hpts[3] + color + [0, 1, 0]
+    vertices += pts[0] + color + [1, 0, 0]
+    vertices += hpts[0] + color + [1, 0, 0]
+    vertices += pts[4] + color + [1, 0, 0]  # 10
+    vertices += hpts[4] + color + [1, 0, 0]
+    vertices += pts[3] + color + [-1, 0, 0]
+    vertices += hpts[3] + color + [-1, 0, 0]
+    vertices += pts[33] + color + [-1, 0, 0]
+    vertices += hpts[33] + color + [-1, 0, 0]  #15
+    vertices += pts[14] + color + [1, 0, 0]
+    vertices += hpts[14] + color + [1, 0, 0]
+    vertices += pts[24] + color + [1, 0, 0]
+    vertices += hpts[24] + color + [1, 0, 0]
+    vertices += pts[6] + color + [-1, 0, 0]  #20
+    vertices += hpts[6] + color + [-1, 0, 0]
+    vertices += pts[25] + color + [-1, 0, 0]
+    vertices += hpts[25] + color + [-1, 0, 0]
+    vertices += pts[8] + color + [-1, 0, 0]
+    vertices += hpts[8] + color + [-1, 0, 0]  #25
+    vertices += pts[27] + color + [-1, 0, 0]
+    vertices += hpts[27] + color + [-1, 0, 0]
+    vertices += pts[10] + color + [-1, 0, 0]
+    vertices += hpts[10] + color + [-1, 0, 0]
+    vertices += pts[29] + color + [-1, 0, 0]  #30
+    vertices += hpts[29] + color + [-1, 0, 0]
+    vertices += pts[12] + color + [-1, 0, 0]
+    vertices += hpts[12] + color + [-1, 0, 0]
+    vertices += pts[31] + color + [-1, 0, 0]
+    vertices += hpts[31] + color + [-1, 0, 0]  #35
+    vertices += pts[16] + color + [1, 0, 0]
+    vertices += hpts[16] + color + [1, 0, 0]
+    vertices += pts[26] + color + [1, 0, 0]
+    vertices += hpts[26] + color + [1, 0, 0]
+    vertices += pts[18] + color + [1, 0, 0]  #40
+    vertices += hpts[18] + color + [1, 0, 0]
+    vertices += pts[28] + color + [1, 0, 0]
+    vertices += hpts[28] + color + [1, 0, 0]
+    vertices += pts[20] + color + [1, 0, 0]
+    vertices += hpts[20] + color + [1, 0, 0] #45
+    vertices += pts[30] + color + [1, 0, 0]
+    vertices += hpts[30] + color + [1, 0, 0]
+    vertices += pts[22] + color + [1, 0, 0]
+    vertices += hpts[22] + color + [1, 0, 0]
+    vertices += pts[32] + color + [1, 0, 0]  #50
+    vertices += hpts[32] + color + [1, 0, 0]
+    vertices += pts[4] + color + [0, -1, 0]
+    vertices += hpts[4] + color + [0, -1, 0]
+    vertices += pts[5] + color + [0, -1, 0]
+    vertices += hpts[5] + color + [0, -1, 0]  #55
+    vertices += pts[6] + color + [0, -1, 0]
+    vertices += hpts[6] + color + [0, -1, 0]
+    vertices += pts[7] + color + [0, -1, 0]
+    vertices += hpts[7] + color + [0, -1, 0]
+    vertices += pts[8] + color + [0, -1, 0]  #60
+    vertices += hpts[8] + color + [0, -1, 0]
+    vertices += pts[9] + color + [0, -1, 0]
+    vertices += hpts[9] + color + [0, -1, 0]
+    vertices += pts[10] + color + [0, -1, 0]
+    vertices += hpts[10] + color + [0, -1, 0]  #65
+    vertices += pts[11] + color + [0, -1, 0]
+    vertices += hpts[11] + color + [0, -1, 0]
+    vertices += pts[12] + color + [0, -1, 0]
+    vertices += hpts[12] + color + [0, -1, 0]
+    vertices += pts[13] + color + [0, -1, 0]  #70
+    vertices += hpts[13] + color + [0, -1, 0]
+    vertices += pts[14] + color + [0, 1, 0]
+    vertices += hpts[14] + color + [0, 1, 0]
+    vertices += pts[15] + color + [0, 1, 0]
+    vertices += hpts[15] + color + [0, 1, 0]  #75  
+    vertices += pts[16] + color + [0, 1, 0]
+    vertices += hpts[16] + color + [0, 1, 0]
+    vertices += pts[17] + color + [0, 1, 0]
+    vertices += hpts[17] + color + [0, 1, 0]
+    vertices += pts[18] + color + [0, 1, 0]  #80
+    vertices += hpts[18] + color + [0, 1, 0]
+    vertices += pts[19] + color + [0, 1, 0]
+    vertices += hpts[19] + color + [0, 1, 0]
+    vertices += pts[20] + color + [0, 1, 0]
+    vertices += hpts[20] + color + [0, 1, 0]  #85
+    vertices += pts[21] + color + [0, 1, 0]
+    vertices += hpts[21] + color + [0, 1, 0]
+    vertices += pts[22] + color + [0, 1, 0]
+    vertices += hpts[22] + color + [0, 1, 0]
+    vertices += pts[23] + color + [0, 1, 0]  #90
+    vertices += hpts[23] + color + [0, 1, 0]
+    vertices += pts[5] + color + [1, 0, 0]
+    vertices += hpts[5] + color + [1, 0, 0]
+    vertices += pts[15] + color + [1, 0, 0]
+    vertices += hpts[15] + color + [1, 0, 0]  #95
+    vertices += pts[7] + color + [1, 0, 0]
+    vertices += hpts[7] + color + [1, 0, 0]
+    vertices += pts[17] + color + [1, 0, 0]
+    vertices += hpts[17] + color + [1, 0, 0]
+    vertices += pts[9] + color + [1, 0, 0]  #100
+    vertices += hpts[9] + color + [1, 0, 0]
+    vertices += pts[19] + color + [1, 0, 0]
+    vertices += hpts[19] + color + [1, 0, 0]
+    vertices += pts[11] + color + [1, 0, 0]
+    vertices += hpts[11] + color + [1, 0, 0]  #105
+    vertices += pts[21] + color + [1, 0, 0]
+    vertices += hpts[21] + color + [1, 0, 0]
+    vertices += pts[13] + color + [1, 0, 0]
+    vertices += hpts[13] + color + [1, 0, 0]
+    vertices += pts[23] + color + [1, 0, 0]  #110
+    vertices += hpts[23] + color + [1, 0, 0]
+
+    # Defining connections among vertices
+    indices = [
+           0,  1,  2, 
+           1,  3,  2,
+           2,  3,  4,
+           3,  5,  4,
+           4,  5,  6,
+           5,  7,  6,
+           8, 10,  9,
+          10,  9, 11,
+          13, 14, 12,
+          13, 15, 14,
+          16, 18, 17,
+          17, 18, 19,
+          21, 22, 20,
+          21, 23, 22,
+          25, 26, 24,
+          25, 27, 26,
+          29, 30, 28,
+          29, 31, 30,
+          33, 34, 32,
+          33, 35, 34,
+          36, 38, 37,
+          37, 38, 39,
+          40, 42, 41,
+          41, 42, 43,
+          44, 46, 45,
+          45, 46, 47,
+          48, 50, 49,
+          49, 50, 51,
+          52, 54, 53,
+          53, 54, 55,
+          56, 58, 57,
+          57, 58, 59,
+          60, 62, 61,
+          61, 62, 63,
+          64, 66, 65,
+          65, 66, 67,
+          68, 70, 69,
+          69, 70, 71,
+          75, 74, 72,
+          75, 72, 73,
+          79, 78, 76,
+          79, 76, 77,
+          83, 82, 80,
+          83, 80, 81,
+          87, 86, 84,
+          87, 84, 85,
+          91, 90, 88,
+          91, 88, 89,
+          93, 92, 94,
+          93, 94, 95,
+          97, 96, 98,
+          97, 98, 99,
+         101,100,102,
+         101,102,103,
+         105,104,106,
+         105,106,107,
+         109,108,110,
+         109,110,111,
     ]
     return bs.Shape(vertices, indices)
 
@@ -242,14 +428,23 @@ if __name__ == "__main__":
     # and which one is at the back
     glEnable(GL_DEPTH_TEST)
 
-    # Creating shapes on GPU memory
-    gpuRoof = es.toGPUShape(blueprint())
+    # Creating the graphs
+    roofGraph = sg.SceneGraphNode("roof")
+    roofGraph.transform = tr.translate(0, 0, 1)
+    roofGraph.childs += [es.toGPUShape(blueprint())]
 
-    t0 = glfw.get_time()
-    camera_theta = -3*np.pi/4
+    floorGraph = sg.SceneGraphNode("floor")
+    floorGraph.childs += [es.toGPUShape(blueprint(True))]
+
+    wallGraph = sg.SceneGraphNode("wall")
+    wallGraph.childs += [es.toGPUShape(createWalls())]
 
     # Setting up the projection
     projection = tr.perspective(60, float(width) / float(height), 0.1, 100)
+
+    # Light position
+    lgX = 1.5 * data["L"] + data["W"]
+    lgY = 1.5 * (data["P"] + data["W"] + data["D"])
 
     while not glfw.window_should_close(window):
         # Using GLFW to check for input events
@@ -274,12 +469,12 @@ if __name__ == "__main__":
         glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ls"), 1.0, 1.0, 1.0)
 
         glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ka"), 0.2, 0.2, 0.2)
-        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Kd"), 0.9, 0.9, 0.9)
-        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ks"), 1.0, 1.0, 1.0)
+        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Kd"), 0.4, 0.4, 0.4)
+        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "Ks"), 0.4, 0.4, 0.4)
 
-        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "lightPosition"), -3, 0, 3)
+        glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "lightPosition"), lgX, lgY, 0.5)
         glUniform3f(glGetUniformLocation(pipeline.shaderProgram, "viewPosition"), viewPos[0], viewPos[1], viewPos[2])
-        glUniform1ui(glGetUniformLocation(pipeline.shaderProgram, "shininess"), 100)
+        glUniform1ui(glGetUniformLocation(pipeline.shaderProgram, "shininess"), 10)
         glUniform1f(glGetUniformLocation(pipeline.shaderProgram, "constantAttenuation"), 0.001)
         glUniform1f(glGetUniformLocation(pipeline.shaderProgram, "linearAttenuation"), 0.1)
         glUniform1f(glGetUniformLocation(pipeline.shaderProgram, "quadraticAttenuation"), 0.01)
@@ -288,8 +483,10 @@ if __name__ == "__main__":
         glUniformMatrix4fv(glGetUniformLocation(pipeline.shaderProgram, "view"), 1, GL_TRUE, view)
         glUniformMatrix4fv(glGetUniformLocation(pipeline.shaderProgram, "model"), 1, GL_TRUE, tr.identity())
 
-        # Drawing the shapes
-        pipeline.drawShape(gpuRoof)
+        # Drawing the graphs
+        sg.drawSceneGraphNode(wallGraph, pipeline, "model")
+        sg.drawSceneGraphNode(roofGraph, pipeline, "model")
+        sg.drawSceneGraphNode(floorGraph, pipeline, "model")
 
         # Once the drawing is rendered, buffers are swap so an uncomplete drawing is never seen.
         glfw.swap_buffers(window)
