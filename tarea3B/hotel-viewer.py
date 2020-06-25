@@ -56,7 +56,8 @@ midval = (maxval + minval) / 2
 # Class that stores the application control
 class Controller:
     def __init__(self):
-        self.cameraTheta = 45 * np.pi / 180
+        self.cameraPhi = np.pi / 2
+        self.cameraTheta = np.pi / 4
         self.xPos = data["L"] / 2
         self.yPos = data["P"] / 2
         self.curves = False
@@ -87,9 +88,12 @@ def on_key(window, key, scancode, action, mods):
             if abs(angle - snap) < 0.1:
                 controller.cameraTheta = snap % (2 * np.pi)
                 break
+        
+        if abs(controller.cameraPhi - np.pi / 2) < 0.1:
+            controller.cameraPhi = np.pi / 2
 
-        controller.xPos += 0.1 * sign * np.sin(controller.cameraTheta)
-        controller.yPos += 0.1 * sign * np.cos(controller.cameraTheta)
+        controller.xPos += 0.1 * sign * np.cos(controller.cameraTheta)
+        controller.yPos += 0.1 * sign * np.sin(controller.cameraTheta)
 
         # Limits the movement to the interior of the hotel
         if controller.xPos < 0:
@@ -103,10 +107,18 @@ def on_key(window, key, scancode, action, mods):
             controller.yPos = data["P"] + data["W"] + data["D"]
     
     elif key == glfw.KEY_RIGHT:
-        controller.cameraTheta = (controller.cameraTheta + np.pi / 90) % (2 * np.pi)
+        controller.cameraTheta = (controller.cameraTheta - np.pi / 90) % (2 * np.pi)
     
     elif key == glfw.KEY_LEFT:
-        controller.cameraTheta = (controller.cameraTheta - np.pi / 90) % (2 * np.pi)
+        controller.cameraTheta = (controller.cameraTheta + np.pi / 90) % (2 * np.pi)
+    
+    elif key == glfw.KEY_W:
+        angle = controller.cameraPhi - np.pi / 90
+        controller.cameraPhi = angle if angle >= np.pi / 3 else np.pi / 3
+    
+    elif key == glfw.KEY_S:
+        angle = controller.cameraPhi + np.pi / 90
+        controller.cameraPhi = angle if angle <= 3 * np.pi / 4 else 3 * np.pi / 4
 
     elif action != glfw.PRESS:
         return
@@ -411,20 +423,22 @@ def createWalls():
     return bs.Shape(vertices, indices)
 
 
-# Moves the camera in a cylindrical system,
+# Moves the camera in a spherical system,
 # returns the view matrix and the viewPos vector for later use
 def moveCamera():
 
+    phi = controller.cameraPhi
     theta = controller.cameraTheta
 
     # Where to look
-    atX = controller.xPos + np.sin(theta)
-    atY = controller.yPos + np.cos(theta)
+    atX = controller.xPos + np.cos(theta) * np.sin(phi)
+    atY = controller.yPos + np.sin(theta) * np.sin(phi)
+    atZ = 0.5 + np.cos(phi)
 
     viewPos = np.array([controller.xPos, controller.yPos, 0.5])
     viewUp = np.array([0, 0, 1])
 
-    return tr.lookAt(viewPos, np.array([atX, atY, 0.5]), viewUp), viewPos
+    return tr.lookAt(viewPos, np.array([atX, atY, atZ]), viewUp), viewPos
 
 
 # Get the contours from matplotlib
@@ -521,7 +535,7 @@ if __name__ == "__main__":
     print("Minimum value (Blue):", "{:.2f}".format(minval))
     print("Intermediate value (White):", "{:.2f}".format(midval))
     print("Maximum value (Red):", "{:.2f}".format(maxval), '\n')
-    print("You can move with the arrow keys." + '\n')
+    print("You can move with the arrow keys and tilt the view with the W and S keys" + '\n')
 
     while not glfw.window_should_close(window):
         # Using GLFW to check for input events
